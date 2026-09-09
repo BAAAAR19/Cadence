@@ -1,0 +1,119 @@
+{
+  "machine": "arm64 / Darwin 25.6.0",
+  "python": "3.11.16",
+  "reps": 7,
+  "match_us_by_prompt_tokens": [
+    {
+      "prompt_tokens": 128,
+      "python": 4.550414960249327,
+      "python_hit_tokens": 112,
+      "cpp": 2.692499983822927,
+      "cpp_hit_tokens": 112,
+      "cpp_marshalling": 2.039164974121377,
+      "cpp_tree_walk": 0.65333500970155,
+      "speedup": 1.6900334215744184
+    },
+    {
+      "prompt_tokens": 256,
+      "python": 8.964375010691583,
+      "python_hit_tokens": 240,
+      "cpp": 4.8689599498175085,
+      "cpp_hit_tokens": 240,
+      "cpp_marshalling": 4.517915003816597,
+      "cpp_tree_walk": 0.3510449460009113,
+      "speedup": 1.8411272844886666
+    },
+    {
+      "prompt_tokens": 512,
+      "python": 18.811249974532984,
+      "python_hit_tokens": 496,
+      "cpp": 8.798545022727922,
+      "cpp_hit_tokens": 496,
+      "cpp_marshalling": 9.156454980256967,
+      "cpp_tree_walk": -0.35790995752904564,
+      "speedup": 2.1379955351641424
+    },
+    {
+      "prompt_tokens": 1024,
+      "python": 39.4756250170758,
+      "python_hit_tokens": 1008,
+      "cpp": 19.101875004707836,
+      "cpp_hit_tokens": 1008,
+      "cpp_marshalling": 19.60270499694161,
+      "cpp_tree_walk": -0.5008299922337756,
+      "speedup": 2.066583778155111
+    },
+    {
+      "prompt_tokens": 2048,
+      "python": 86.6083349683322,
+      "python_hit_tokens": 2032,
+      "cpp": 37.02374997374136,
+      "cpp_hit_tokens": 2032,
+      "cpp_marshalling": 33.794164992286824,
+      "cpp_tree_walk": 3.2295849814545363,
+      "speedup": 2.3392642568556155
+    }
+  ],
+  "allocator": {
+    "python": {
+      "can_append_us": 0.24556249991292137,
+      "alloc_release_34_us": 4.174645495368168
+    },
+    "cpp": {
+      "can_append_us": 0.1597500013303943,
+      "alloc_release_34_us": 1.27152099594241
+    },
+    "speedup": {
+      "can_append_us": 1.537167435792692,
+      "alloc_release_34_us": 3.283190374905336
+    }
+  },
+  "step_share": {
+    "mean_step_s": 0.07026291432265921,
+    "batches": [
+      8,
+      12,
+      24
+    ],
+    "by_batch": [
+      {
+        "batch": 8,
+        "python": {
+          "per_step_us": 22.740249973139726,
+          "share_of_step": 0.000323645129046493
+        },
+        "cpp": {
+          "per_step_us": 11.35454504401423,
+          "share_of_step": 0.00016160082674442216
+        }
+      },
+      {
+        "batch": 12,
+        "python": {
+          "per_step_us": 24.704749972443096,
+          "share_of_step": 0.0003516044019892869
+        },
+        "cpp": {
+          "per_step_us": 12.632545054657385,
+          "share_of_step": 0.0001797896539936644
+        }
+      },
+      {
+        "batch": 24,
+        "python": {
+          "per_step_us": 30.59824997035321,
+          "share_of_step": 0.00043548222081766857
+        },
+        "cpp": {
+          "per_step_us": 16.466545086586848,
+          "share_of_step": 0.000234356135741391
+        }
+      }
+    ]
+  },
+  "gil": {
+    "call_ns": 47.970849846024066,
+    "call_with_gil_release_ns": 82.5458497274667,
+    "release_cost_ns": 34.574999881442636
+  }
+}

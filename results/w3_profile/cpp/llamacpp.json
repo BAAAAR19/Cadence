@@ -1,0 +1,8 @@
+{
+  "thread": "cadence-engine",
+  "hz_requested": 500.0,
+  "hz_achieved": 386.8,
+  "n_samples": 59932,
+  "n_missed": 0,
+  "elapsed_s": 154.939
+}

@@ -12,8 +12,7 @@ import uuid
 
 from cadence.admission import Decision, build_controller
 from cadence.engine.backends import build_runner
-from cadence.engine.kv.block_manager import BlockManager, ContiguousBlockManager
-from cadence.engine.kv.radix_cache import RadixCache
+from cadence.engine.kv import build_kv
 from cadence.engine.request import Request
 from cadence.engine.scheduler.continuous import ContinuousScheduler
 from cadence.engine.scheduler.fifo import FifoScheduler
@@ -28,13 +27,10 @@ def build_scheduler(runner, cfg, metrics):
     if cfg.scheduler == "static":
         return StaticBatchScheduler(runner, cfg, metrics)
     if cfg.scheduler == "continuous":
-        blocks = (
-            BlockManager(cfg.n_kv_blocks, cfg.block_size)
-            if cfg.enable_paged_kv
-            else ContiguousBlockManager(cfg.n_kv_blocks, cfg.block_size, cfg.max_tokens_cap)
-        )
-        prefix = RadixCache(blocks, cfg.block_size) if cfg.enable_prefix_cache else None
-        return ContinuousScheduler(runner, cfg, metrics, blocks=blocks, prefix_cache=prefix)
+        blocks, prefix, core = build_kv(cfg)
+        sched = ContinuousScheduler(runner, cfg, metrics, blocks=blocks, prefix_cache=prefix)
+        sched.kv_core = core
+        return sched
     raise ValueError(f"unknown scheduler {cfg.scheduler!r}")
 
 

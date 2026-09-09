@@ -21,8 +21,10 @@ from __future__ import annotations
 
 import heapq
 import time
+from contextlib import contextmanager
 
 from cadence.engine.kv.block_manager import BlockManager, OutOfBlocks
+from cadence.engine.kv.protocols import BlockPool, PrefixCache, PrefixMatch
 from cadence.engine.kv.radix_cache import Match, RadixCache
 from cadence.engine.request import Request, State
 from cadence.engine.scheduler.base import BaseScheduler, Live
@@ -37,11 +39,14 @@ except ImportError:  # pragma: no cover
 
 class ContinuousScheduler(BaseScheduler):
     name = "continuous"
+    kv_core = "python"
+    """Set by ``build_scheduler``; reported in ``/stats`` so that every run
+    records which implementation of the KV structures produced it."""
 
     def __init__(self, runner, cfg, metrics, blocks=None, prefix_cache=None) -> None:
         super().__init__(runner, cfg, metrics)
-        self.blocks: BlockManager = blocks or BlockManager(cfg.n_kv_blocks, cfg.block_size)
-        self.prefix: RadixCache | None = prefix_cache
+        self.blocks: BlockPool = blocks or BlockManager(cfg.n_kv_blocks, cfg.block_size)
+        self.prefix: PrefixCache | None = prefix_cache
         if self.prefix is None and cfg.enable_prefix_cache:
             self.prefix = RadixCache(self.blocks, cfg.block_size)
         if self.prefix is not None:
@@ -67,7 +72,7 @@ class ContinuousScheduler(BaseScheduler):
             heapq.heappush(self.waiting, rq)
         self.n_waiting = len(self.waiting)
 
-    def _match_prefix(self, rq: Request) -> Match:
+    def _match_prefix(self, rq: Request) -> PrefixMatch:
         """Look up a prompt without counting the lookup.
 
         A request at the head of a busy queue is matched on every step until
@@ -79,6 +84,37 @@ class ContinuousScheduler(BaseScheduler):
         if self.prefix is None:
             return Match(n_tokens=0, block_ids=[], node=None)
         return self.prefix.match(rq.prompt_ids, count=False)
+
+    @contextmanager
+    def _pinned_match(self, rq: Request):
+        """Match ``rq``'s prompt and hold the matched path for the length of
+        the admission decision.
+
+        Without the pin this is a use-after-free waiting to happen, and it
+        happened: admission matches a prefix, then discovers it is short of
+        blocks, then calls ``_reclaim`` -- which evicts by LRU and, under
+        enough pressure, evicts the very node just matched. ``hit.block_ids``
+        then names blocks that are back on the free list, and the ``share()``
+        in ``_admit`` raises ``cannot share free block``, killing the engine
+        thread. The seq-id branch below evicts too, with the same consequence.
+
+        Pinning is the right fix rather than re-matching after each eviction:
+        re-matching leaves the same window open one line further down, and it
+        spends the prefix on a request that is about to reuse it. A pinned
+        node is simply not an eviction candidate, so the decision sees one
+        consistent view of the cache from match to admit.
+
+        The pin is released on the way out; ``_admit`` has by then taken its
+        own reference for the life of the request.
+        """
+        hit = self._match_prefix(rq)
+        if hit.node is not None and self.prefix is not None:
+            self.prefix.acquire(hit.node)
+        try:
+            yield hit
+        finally:
+            if hit.node is not None and self.prefix is not None:
+                self.prefix.release(hit.node)
 
     def _reclaim(self, n_blocks: int) -> None:
         """Blocks pinned by the prefix cache are reclaimable; blocks held by a
@@ -110,48 +146,54 @@ class ContinuousScheduler(BaseScheduler):
                 heapq.heappop(self.waiting)
                 continue
 
-            hit = self._match_prefix(rq)
-            # Gate on what admission will actually take, plus a watermark that
-            # leaves room for sequences already running to grow.
-            #
-            # Gating on the *worst* case instead -- everything the request could
-            # eventually occupy -- is the obvious-looking alternative and it is
-            # worse in both directions: it admits too few requests, and because
-            # the shortfall is made up by evicting cached prefixes, it spends
-            # the prefix cache to buy batch slots it does not use. Under paged
-            # allocation the honest gate is the near-term one, and over-commit
-            # is resolved by preemption, which is what preemption is for.
-            need = self.blocks.initial_blocks(len(rq.prompt_ids), cached=hit.n_tokens)
-            need += self._watermark
-            if need > self.blocks.free_blocks():
-                self._reclaim(need - self.blocks.free_blocks())
+            # A match names blocks and a node that only stay valid while the
+            # path is pinned -- and both gates below can evict. Pinning for the
+            # length of the decision is the invariant that makes the match
+            # usable at the end of it; see ``_pinned_match``.
+            with self._pinned_match(rq) as hit:
+                # Gate on what admission will actually take, plus a watermark
+                # that leaves room for sequences already running to grow.
+                #
+                # Gating on the *worst* case instead -- everything the request
+                # could eventually occupy -- is the obvious-looking alternative
+                # and it is worse in both directions: it admits too few
+                # requests, and because the shortfall is made up by evicting
+                # cached prefixes, it spends the prefix cache to buy batch
+                # slots it does not use. Under paged allocation the honest gate
+                # is the near-term one, and over-commit is resolved by
+                # preemption, which is what preemption is for.
+                need = self.blocks.initial_blocks(len(rq.prompt_ids), cached=hit.n_tokens)
+                need += self._watermark
                 if need > self.blocks.free_blocks():
-                    break  # memory-bound: stop admitting
+                    self._reclaim(need - self.blocks.free_blocks())
+                    if need > self.blocks.free_blocks():
+                        break  # memory-bound: stop admitting
 
-            new_tokens = len(rq.prompt_ids) - hit.n_tokens
-            if budget <= 0 and prefill:
-                break
-            if new_tokens > budget and prefill:
-                break  # token-budget-bound; a lone request may still exceed it
-                       # and will be chunked across steps instead.
+                new_tokens = len(rq.prompt_ids) - hit.n_tokens
+                if budget <= 0 and prefill:
+                    break
+                if new_tokens > budget and prefill:
+                    break  # token-budget-bound; a lone request may still exceed
+                           # it and will be chunked across steps instead.
 
-            seq_id = self.seq_ids.alloc()
-            if seq_id is None and self.prefix is not None:
-                # Cached prefixes pin backend sequences, so the pool can be
-                # exhausted by the cache rather than by running work. Drop the
-                # coldest entries a few at a time until one frees up -- not the
-                # whole cache, which would take the shared prompts with it.
-                for _ in range(8):
-                    if self.prefix.evict_nodes(2) == 0:
-                        break
-                    seq_id = self.seq_ids.alloc()
-                    if seq_id is not None:
-                        break
-            if seq_id is None:
-                break  # sequence-id-bound
+                seq_id = self.seq_ids.alloc()
+                if seq_id is None and self.prefix is not None:
+                    # Cached prefixes pin backend sequences, so the pool can be
+                    # exhausted by the cache rather than by running work. Drop
+                    # the coldest entries a few at a time until one frees up --
+                    # not the whole cache, which would take the shared prompts
+                    # with it.
+                    for _ in range(8):
+                        if self.prefix.evict_nodes(2) == 0:
+                            break
+                        seq_id = self.seq_ids.alloc()
+                        if seq_id is not None:
+                            break
+                if seq_id is None:
+                    break  # sequence-id-bound
 
-            heapq.heappop(self.waiting)
-            live = self._admit(rq, seq_id, hit)
+                heapq.heappop(self.waiting)
+                live = self._admit(rq, seq_id, hit)
             budget -= min(new_tokens, budget)
             prefill.append(live)
             n_admitted += 1
@@ -197,7 +239,7 @@ class ContinuousScheduler(BaseScheduler):
         live = self._begin(rq, seq_id, n_past=hit.n_tokens)
         live.matched_tokens = hit.n_tokens
         live.shared_blocks = shared
-        if hit.n_tokens and hit.node is not None:
+        if hit.n_tokens and hit.node is not None and self.prefix is not None:
             # Materialise the hit: llama.cpp adds this sequence to the cells
             # already holding those tokens, so they are never re-run.
             self.runner.copy_prefix(hit.owner_seq, seq_id, hit.n_tokens)
@@ -288,7 +330,7 @@ class ContinuousScheduler(BaseScheduler):
                 # request's sequence must still be freed -- otherwise sequence
                 # ids leak until the pool is empty and admission stalls.
                 donated = node is not None and node.owner_seq == rq.seq_id
-        if live.prefix_node is not None:
+        if live.prefix_node is not None and self.prefix is not None:
             self.prefix.release(live.prefix_node)
             live.prefix_node = None
         if rq.block_ids:
@@ -424,6 +466,7 @@ class ContinuousScheduler(BaseScheduler):
                 "prefix_hit_rate": self.prefix.hit_rate if self.prefix else 0.0,
                 "prefix_nodes": self.prefix.n_nodes() if self.prefix else 0,
                 "cow": self.blocks.n_copy_on_write,
+                "kv_core": self.kv_core,
             }
         )
         return out

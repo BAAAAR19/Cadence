@@ -4,19 +4,21 @@ The three correctness rules are each asserted directly, because each of them
 fails silently in a different and confusing way: a match past a block boundary
 corrupts the sharing sequence's tail, evicting a referenced node produces
 garbage mid-stream, and evicting an interior node orphans its children.
+
+Every test runs twice, against the Python reference and against the C++17
+extension (the ``kv`` fixture in conftest). Assertions are therefore written
+against the public surface only -- ``paths()`` rather than ``root.children`` --
+because the extension's nodes are not Python objects to walk.
 """
 
 from __future__ import annotations
 
-from cadence.engine.kv.block_manager import BlockManager
-from cadence.engine.kv.radix_cache import RadixCache
-
 B = 16
 
 
-def _cache(n_blocks=64):
-    bm = BlockManager(n_blocks, B)
-    return bm, RadixCache(bm, B)
+def _cache(kv, n_blocks=64):
+    bm = kv.BlockManager(n_blocks, B)
+    return bm, kv.RadixCache(bm, B)
 
 
 def _insert(bm, rc, tokens, owner):
@@ -27,13 +29,13 @@ def _insert(bm, rc, tokens, owner):
     return node
 
 
-def test_miss_on_an_empty_cache():
-    bm, rc = _cache()
+def test_miss_on_an_empty_cache(kv):
+    bm, rc = _cache(kv)
     assert not rc.match(list(range(100))).hit
 
 
-def test_exact_prefix_is_matched_and_truncated_to_a_block_boundary():
-    bm, rc = _cache()
+def test_exact_prefix_is_matched_and_truncated_to_a_block_boundary(kv):
+    bm, rc = _cache(kv)
     toks = list(range(1000, 1000 + 8 * B))
     _insert(bm, rc, toks, owner=3)
 
@@ -44,10 +46,10 @@ def test_exact_prefix_is_matched_and_truncated_to_a_block_boundary():
     assert m.owner_seq == 3
 
 
-def test_a_partial_block_is_never_shared():
+def test_a_partial_block_is_never_shared(kv):
     """A block that is only partly full will be written by whichever sequence
     continues first, so the match must stop below it."""
-    bm, rc = _cache()
+    bm, rc = _cache(kv)
     toks = list(range(2000, 2000 + 5 * B))
     _insert(bm, rc, toks, owner=1)
 
@@ -57,18 +59,18 @@ def test_a_partial_block_is_never_shared():
     assert m.n_tokens <= 3 * B
 
 
-def test_match_always_leaves_a_token_to_prefill():
+def test_match_always_leaves_a_token_to_prefill(kv):
     """A 100% hit would leave no token for the forward pass to produce logits
     from."""
-    bm, rc = _cache()
+    bm, rc = _cache(kv)
     toks = list(range(4 * B))
     _insert(bm, rc, toks, owner=0)
     m = rc.match(toks)
     assert m.n_tokens < len(toks)
 
 
-def test_divergent_branches_share_the_common_prefix():
-    bm, rc = _cache()
+def test_divergent_branches_share_the_common_prefix(kv):
+    bm, rc = _cache(kv)
     common = list(range(500, 500 + 6 * B))
     a = common + list(range(9000, 9000 + 2 * B))
     b = common + list(range(7000, 7000 + 2 * B))
@@ -82,8 +84,8 @@ def test_divergent_branches_share_the_common_prefix():
     assert rc.match(b + [0]).n_tokens >= 8 * B
 
 
-def test_referenced_nodes_are_never_evicted():
-    bm, rc = _cache(n_blocks=16)
+def test_referenced_nodes_are_never_evicted(kv):
+    bm, rc = _cache(kv, n_blocks=16)
     toks = list(range(4 * B))
     _insert(bm, rc, toks, owner=5)
     m = rc.match(toks + [1])
@@ -98,8 +100,8 @@ def test_referenced_nodes_are_never_evicted():
     assert not rc.match(toks + [1]).hit
 
 
-def test_eviction_is_lru_over_leaves():
-    bm, rc = _cache(n_blocks=32)
+def test_eviction_is_lru_over_leaves(kv):
+    bm, rc = _cache(kv, n_blocks=32)
     old = list(range(100, 100 + 4 * B))
     new = list(range(9000, 9000 + 4 * B))
     _insert(bm, rc, old, owner=1)
@@ -111,8 +113,8 @@ def test_eviction_is_lru_over_leaves():
     assert rc.match(new + [0]).hit
 
 
-def test_eviction_frees_blocks_and_releases_owner_sequences():
-    bm, rc = _cache(n_blocks=32)
+def test_eviction_frees_blocks_and_releases_owner_sequences(kv):
+    bm, rc = _cache(kv, n_blocks=32)
     released: list[int] = []
     rc.on_seq_released = released.append
     toks = list(range(6 * B))
@@ -124,8 +126,8 @@ def test_eviction_frees_blocks_and_releases_owner_sequences():
     assert released == [11], "the backend sequence backing the cached KV was not freed"
 
 
-def test_split_keeps_both_halves_usable():
-    bm, rc = _cache()
+def test_split_keeps_both_halves_usable(kv):
+    bm, rc = _cache(kv)
     long = list(range(300, 300 + 8 * B))
     _insert(bm, rc, long, owner=1)
     short = long[: 4 * B] + list(range(8000, 8000 + 2 * B))
@@ -136,10 +138,10 @@ def test_split_keeps_both_halves_usable():
     assert rc.match(long[: 4 * B] + [1, 2]).n_tokens == 4 * B
 
 
-def test_token_level_hit_rate_is_what_is_reported():
+def test_token_level_hit_rate_is_what_is_reported(kv):
     """Partial hits are the normal case, so a request-level rate would hide
     most of what the cache is doing."""
-    bm, rc = _cache()
+    bm, rc = _cache(kv)
     toks = list(range(10 * B))
     _insert(bm, rc, toks, owner=1)
     rc.query_tokens = rc.hit_tokens = 0
@@ -151,8 +153,8 @@ def test_token_level_hit_rate_is_what_is_reported():
     assert 0.0 < rc.hit_rate < 1.0
 
 
-def test_no_block_leak_across_insert_and_evict_cycles():
-    bm, rc = _cache(n_blocks=64)
+def test_no_block_leak_across_insert_and_evict_cycles(kv):
+    bm, rc = _cache(kv, n_blocks=64)
     for i in range(20):
         toks = list(range(i * 1000, i * 1000 + 4 * B))
         if bm.free_blocks() < 4:
@@ -162,7 +164,7 @@ def test_no_block_leak_across_insert_and_evict_cycles():
     assert bm.free_blocks() == 64
 
 
-def test_divergence_inside_a_block_does_not_corrupt_the_tree():
+def test_divergence_inside_a_block_does_not_corrupt_the_tree(kv):
     """Two prompts that share a long prefix and diverge *inside* a block --
     the normal case for a shared system prompt followed by different user
     turns -- must not graft one prompt's tail under the other's.
@@ -171,7 +173,7 @@ def test_divergence_inside_a_block_does_not_corrupt_the_tree():
     sequence no request ever sent. It is quiet: matches still mostly work, the
     tree just fills with entries nothing can reach.
     """
-    bm, rc = _cache(n_blocks=128)
+    bm, rc = _cache(kv, n_blocks=128)
     shared = list(range(1000, 1000 + 6 * B))          # 96 shared tokens
     a = shared + [7] * 10 + list(range(2000, 2000 + 20))  # diverges at +10
     b = shared + [7] * 10 + list(range(3000, 3000 + 20))
@@ -179,25 +181,20 @@ def test_divergence_inside_a_block_does_not_corrupt_the_tree():
     _insert(bm, rc, b, owner=2)
 
     # Every root path must be a prefix of a sequence that was actually inserted.
-    def walk(node, acc):
-        for child in node.children.values():
-            path = acc + child.tokens
-            assert path == a[: len(path)] or path == b[: len(path)], (
-                f"tree contains a path of {len(path)} tokens matching neither input"
-            )
-            walk(child, path)
-
-    walk(rc.root, [])
+    for path in rc.paths():
+        assert list(path) in (a[: len(path)], b[: len(path)]), (
+            f"tree contains a path of {len(path)} tokens matching neither input"
+        )
 
     # And both still match the full shared prefix.
     for seq in (a, b):
         assert rc.match(seq).n_tokens >= 6 * B
 
 
-def test_shared_system_prompt_with_different_tails_hits_most_of_the_prompt():
+def test_shared_system_prompt_with_different_tails_hits_most_of_the_prompt(kv):
     """The workload's actual shape: a long shared prefix, a short unique tail.
     Nearly all of the prompt should be reusable."""
-    bm, rc = _cache(n_blocks=256)
+    bm, rc = _cache(kv, n_blocks=256)
     system = list(range(50_000, 50_000 + 33 * B))  # 528 tokens
     first = system + list(range(1, 14))
     second = system + list(range(900, 913))

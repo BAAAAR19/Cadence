@@ -42,6 +42,26 @@ RUNGS: dict[str, dict[str, str]] = {
         "CADENCE_ENABLE_PREFIX_CACHE": "true",
         "CADENCE_ADMISSION": "none",
     },
+    # Week 3's A/B. Identical to `continuous+cache` in every respect except
+    # which implementation of the block allocator and the radix cache is
+    # loaded, so that the end-to-end delta of the C++ port is attributable to
+    # the port and to nothing else. Run as two rungs of `run_ladder.py` rather
+    # than as two sweeps, so that the rate-major, rotated order protects the
+    # comparison from thermal drift the same way the ladder is protected.
+    "kv-core-python": {
+        "CADENCE_SCHEDULER": "continuous",
+        "CADENCE_ENABLE_PAGED_KV": "true",
+        "CADENCE_ENABLE_PREFIX_CACHE": "true",
+        "CADENCE_ADMISSION": "none",
+        "CADENCE_KV_CORE": "python",
+    },
+    "kv-core-cpp": {
+        "CADENCE_SCHEDULER": "continuous",
+        "CADENCE_ENABLE_PAGED_KV": "true",
+        "CADENCE_ENABLE_PREFIX_CACHE": "true",
+        "CADENCE_ADMISSION": "none",
+        "CADENCE_KV_CORE": "cpp",
+    },
     "continuous+cache+admission": {
         "CADENCE_SCHEDULER": "continuous",
         "CADENCE_ENABLE_PAGED_KV": "true",

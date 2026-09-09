@@ -4,14 +4,21 @@ An LLM inference gateway with SLO-aware scheduling: continuous batching, a
 paged KV cache and a radix prefix cache in front of a small local model, built
 so that a tail-latency target can be *measured* rather than hoped for.
 
-> **Status: Weeks 0–2 of five are complete.** Shipped: the OpenAI-compatible
-> streaming gateway, the open-loop measurement harness, and the systems core
+> **Status: Weeks 0–3 of five are complete.** Shipped: the OpenAI-compatible
+> streaming gateway, the open-loop measurement harness, the systems core
 > (iteration-level scheduling, paged KV, radix prefix cache, metrics and
-> tracing). Not yet built: the C++17 port of the two hot data structures
-> (Week 3) and the conformal admission controller (Week 4) that turns the p99
-> target into a distribution-free guarantee. Both are stubbed with the
-> interfaces they will fill, and the tests for them skip rather than pass
-> vacuously. See [Roadmap](#roadmap).
+> tracing), and the C++17 port of the two KV data structures behind pybind11,
+> fuzz-tested against the Python reference. Not yet built: the conformal
+> admission controller (Week 4) that turns the p99 target into a
+> distribution-free guarantee. It is stubbed with the interface it will fill,
+> and its test skips rather than passing vacuously. See [Roadmap](#roadmap).
+>
+> Week 3's headline is a negative result, reported as one: the profile says
+> the two structures are **0.02% of scheduler-thread time**, the port is a
+> 2.1× microbenchmark win and a 0% end-to-end win, and what it actually bought
+> was a latent admission bug that had been crashing nothing only because no
+> measured configuration reached the pressure it needs. See
+> [Week 3](#week-3-the-c17-core-and-what-it-was-actually-worth).
 
 ---
 
@@ -22,11 +29,12 @@ so that a tail-latency target can be *measured* rather than hoped for.
 | **Iteration-level scheduling and prompt reuse move the collapse point 3.2× further out.** | Goodput at a 4 s SLO rises 0.37 → 1.19 rps across the four-rung ladder, on one interleaved sweep with a fixed arrival sequence. | **Measured** |
 | **The measurements are sound.** | Open-loop Poisson generator built before the scheduler, latency timestamped from *intended* arrival, arrival process KS-validated over 200 seeds, goodput reported alongside throughput — with the finding that throughput cannot distinguish the four rungs at all. | **Measured** |
 | **My scheduler holds p99 under overload.** | Not yet true, and the ladder shows why: past its own knee every rung degrades, because none of them refuses work. This is what Week 4's conformal admission controller is for, and the harness above is what will decide whether it worked. | Week 4 |
-| **My C++ is load-bearing, not decorative.** | Profile first with `py-spy` under load, port the allocator and radix match only if the profile says they are hot, then report the end-to-end delta honestly — including that it is smaller than the microbenchmark delta. | Week 3 |
+| **My C++ is load-bearing, not decorative.** | It is not load-bearing, and that is the measured answer rather than the hoped-for one: the profile puts the allocator and the radix cache at 0.02% of scheduler-thread time, the port is 2.1× on the microbenchmark and 0% end to end, and the arithmetic said so before the run did. The port earned its place on correctness instead — it surfaced a use-after-free in the Python version, and it is held to the reference by a differential fuzz over 5 000 random operation sequences. | **Measured** |
 
 The third row is the one worth reading. The project's headline claim is a Week 4
-claim; Weeks 0–2 build the baseline it has to beat and the instrument that can
-tell whether it did.
+claim; Weeks 0–3 build the baseline it has to beat and the instrument that can
+tell whether it did. The fourth row is the one most likely to be overclaimed in
+a portfolio, so it is stated the way the measurement came out.
 
 ---
 
@@ -56,7 +64,7 @@ tell whether it did.
            v                        v                       v
   [ 4 ] PAGED KV CACHE     [ 5 ] RADIX PREFIX CACHE   [ 6 ] MODEL RUNNER
   block allocator          shared-prompt reuse         llama.cpp, in-process
-  (C++17 in Week 3)        (C++17 in Week 3)           llama_decode
+  C++17 via pybind11       C++17 via pybind11          llama_decode
            |                        |                       |
            +------------------------+-----------------------+
                                   |
@@ -77,11 +85,19 @@ through a lock-protected deque; tokens cross back out through
 
 ```bash
 git clone <this repo> && cd cadence
-uv sync --all-groups
+uv sync --all-groups          # also builds the C++17 KV core; needs CMake >= 3.26
 mkdir -p models && hf download Qwen/Qwen2.5-0.5B-Instruct-GGUF \
     qwen2.5-0.5b-instruct-q4_k_m.gguf --local-dir models
 uv run cadence-serve
 ```
+
+There is no separate build step and no committed binary: the project's build
+backend is scikit-build-core, so installing it compiles `cadence._core`. If it
+is not built, the gateway falls back to the Python reference and says so in
+`/stats`; `CADENCE_KV_CORE=python|cpp` pins one explicitly, and asking for
+`cpp` when it is missing is an error rather than a silent downgrade — a
+benchmark that thinks it measured the extension and quietly measured Python is
+worse than a benchmark that failed.
 
 Then, with no code changes on the client side:
 
@@ -115,6 +131,13 @@ Reproduce the measurements:
 
 ```bash
 ./bench/run_ablation.sh
+```
+
+Reproduce Week 3's — profile, microbenchmark, end-to-end A/B, in that order,
+because that is the order the argument has to be made in:
+
+```bash
+./bench/run_week3.sh
 ```
 
 ---
@@ -302,6 +325,26 @@ source reproduces the recorded point within run-to-run noise:
 | re-run | 1.078 | 0.874 | 0.071 | 0.361 | 1.317 | 8.465 | 0.626 |
 | delta | −1.9% | −1.9% | +5.1% | +7.5% | +7.7% | +1.8% | +0.5% |
 
+Week 3 changed the engine source again, in four places that could in principle
+move a number:
+
+* `ContinuousScheduler._pinned_match` holds a matched prefix for the length of
+  the admission decision, fixing a crash under memory pressure (described in
+  [Week 3](#week-3-the-c17-core-and-what-it-was-actually-worth));
+* `RadixCache` uses a logical clock rather than `time.monotonic()` for LRU
+  ordering — identical ordering, and the only version of the rule two
+  implementations can be asked to agree on;
+* `RadixCache.match` no longer slices the prompt on every node it visits, which
+  removes the lookup's only super-linear term;
+* the C++ core became the default when it is built.
+
+The same protocol applies: the A/B's `kv-core-python` arm at 1.0 rps *is* the
+re-verification, on source that differs from the ladder's in all four ways, and
+it lands on the recorded point. `results/src.hash` is now produced by
+`bench/srchash.py` and stamped into every run's `meta.json`, so this check is a
+function rather than a note. The Week 2 value in that file was computed by
+hand; the runs it labels are unchanged.
+
 ### One run was repeated, and it is marked as such
 
 The `fifo` run at 2.6 rps completed but its parquet write failed: the `status`
@@ -483,6 +526,293 @@ Every number above is regenerated from the committed parquet by
 
 ---
 
+## Week 3: the C++17 core, and what it was actually worth
+
+The rule this week opens with is that the port has to be motivated by a
+measurement, and the measurement has to be reported whichever way it comes out.
+It came out against the port, and that is the interesting part.
+
+### The profile came first, and it says these structures are not hot
+
+`py-spy` needs `task_for_pid` and therefore root on macOS, and running the
+server under test as root changes the server under test. So the gateway samples
+itself: `cadence/obs/profiler.py` is a sampling profiler on the same principle
+— snapshot the interpreter's per-thread stacks at a fixed rate — from a thread
+that needs no privileges. Two details make its output checkable rather than
+impressionistic. Samples are weighted by the interval they actually cover, not
+counted, because the sampler competes for the GIL and its wake-ups jitter; and
+the realised rate and the number of missed wake-ups are written down next to
+the profile rather than assumed — 59 277 samples at an achieved 381 Hz, none
+missed, for the run below.
+
+If you would rather have py-spy's own view of the same process, it will attach
+to a running gateway with elevated permissions and should agree:
+
+```bash
+sudo py-spy record --pid $(pgrep -f cadence.api.app) --duration 60 \
+     --threads -o /tmp/cadence.svg
+```
+
+`uv run bench/profile_core.py --rate 1.9 --duration 150` runs the gateway under
+a real open-loop load with the sampler on, at the offered load nearest rung 4's
+knee, and produces this:
+
+<!-- CORE_PROFILE -->
+
+| KV core          | Component             | Inclusive   | Self   |
+|:-----------------|:----------------------|:------------|:-------|
+| Python reference | scheduler             | 100.00%     | 0.00%  |
+| Python reference | model runner          | 100.00%     | 92.57% |
+| Python reference | tokenizer (llama.cpp) | 4.20%       | 4.20%  |
+| Python reference | sampling (numpy)      | 3.23%       | 3.23%  |
+| Python reference | kv: radix cache       | 0.02%       | 0.00%  |
+| C++17 core       | scheduler             | 100.00%     | 0.00%  |
+| C++17 core       | model runner          | 100.00%     | 92.73% |
+| C++17 core       | tokenizer (llama.cpp) | 4.06%       | 4.06%  |
+| C++17 core       | sampling (numpy)      | 3.21%       | 3.21%  |
+
+* **Python reference**: 59,277 samples at 381 Hz over 155 s, of which the scheduler thread was busy 99%. 2,180 engine steps, mean 70.3 ms. 324 completed requests at 1.9 rps.
+* **C++17 core**: 59,932 samples at 387 Hz over 155 s, of which the scheduler thread was busy 98%. 2,671 engine steps, mean 56.8 ms. 324 completed requests at 1.9 rps.
+
+<!-- /CORE_PROFILE -->
+
+![Scheduler thread, Python KV core](docs/figs/w3_flamegraph_python.svg)
+
+*Rendered from the committed folded stacks by `bench/core_report.py`; the C++
+arm is `docs/figs/w3_flamegraph_cpp.svg`. Open either directly for per-frame
+tooltips.*
+
+The block manager and the radix cache never appear as the innermost frame at
+all. On the Python arm they are on the stack for **0.02%** of the scheduler
+thread's busy time and account for none of it to two decimal places; on the
+C++ arm they do not appear in 59 932 samples at all. The forward pass is
+92.6%, and it is split across `_decode` and `_logits` because
+`llama_get_logits_ith` forces the deferred `llama_synchronize` — the compute is
+charged where it is waited for, not where it is launched. llama.cpp's own
+tokenizer is 4.2% and greedy sampling through numpy is 3.2%.
+
+One difference between the two arms is worth not over-reading: the C++ arm ran
+**2 671 steps averaging 56.8 ms** where the Python arm ran **2 180 averaging
+70.3 ms**. Same completions, same throughput, same offered load — the loop
+divided identical work into more, shorter steps. It is visible in the engine's
+own histogram and in nothing a client can see.
+
+So the honest answer to "profile first, then port if the profile says they are
+hot" is: **the profile says they are not hot.** They are three orders of
+magnitude away from mattering.
+
+### Ported anyway, for the reasons that survive that answer
+
+The guide's own instruction for this outcome is to say which it was and port
+them regardless, for the per-step allocation-free guarantee. That is a real
+reason and it is not the one that turned out to matter. What the port bought
+was **correctness the pure-Python version had been getting away with**, and an
+interface written down in a form that can be checked.
+
+**A latent crash, found by pointing a profiler at a configuration the ladder
+never reached.** The first thing the profiling run did was kill the engine
+thread inside a minute:
+
+```
+RuntimeError: cannot share free block 810
+  continuous.py:_schedule -> _admit -> block_manager.py:share
+```
+
+Admission matches a cached prefix, discovers it is short of blocks, and calls
+`_reclaim`, which evicts by LRU. Under enough pressure the node it evicts is
+the one that was just matched — so `hit.block_ids` names blocks that are back
+on the free list, and `share()` refuses them. In Python that is an exception
+that takes down the engine thread. It is also the exact shape of a
+use-after-free: had the port handed the scheduler a `Node*`, the same sequence
+would have dereferenced freed memory instead of raising.
+
+The fix is `_pinned_match`: a match is held for the length of the admission
+decision, so the decision sees one consistent view of the cache from match to
+admit. Re-matching after each eviction would have been the smaller change and
+it is the wrong one — it leaves the same window open one line further down, and
+it spends the cached prefix to buy a batch slot the request may not take. Two
+regression tests cover it, and both fail without the pin.
+
+That bug was reachable on the committed Week 2 source. It did not fire during
+the Week 2 ladder because that configuration never reached the pressure it
+needs; the mock backend at 4 rps reaches it in under a minute.
+
+**The C++ makes the dangerous case loud rather than lethal.** Node identity
+across the boundary is a generation-stamped handle looked up in a registry, not
+a `Node*` in a Python object. A stale handle raises `radix node N has been
+evicted` instead of dereferencing freed memory, and `NodeRef.alive` lets a test
+assert the distinction. The Python `Node` keeps its object identity after
+eviction and loses its parent; the differential test asserts that those two
+states mean the same thing on every operation.
+
+**The GIL was doing load-bearing work.** The build guide recommends
+`py::call_guard<py::gil_scoped_release>` around `match`. Measured, a bound
+no-op costs 48 ns and releasing and re-acquiring the GIL adds 35 ns to it —
+a 73% overhead on the call frame, against a `match` whose own work is a
+handful of hash lookups. That is a pessimisation, not an optimisation. The larger cost is correctness: holding the GIL for the whole of
+every binding call is what makes each operation atomic against the `/stats`
+endpoint, which reads `n_nodes()` from the API thread while the scheduler
+thread is splitting nodes. Under Python that concurrency is a torn read;
+with the GIL dropped in C++ it would be a data race over a tree another thread
+is restructuring. So the port does not take the guide's advice, and the reason
+is a number rather than a preference.
+
+### The microbenchmark, and the thing it found
+
+<!-- CORE_BENCH -->
+
+**Longest-prefix match, by prompt length**
+
+|   Prompt tokens |   Python (us) |   C++ (us) |   of which pybind11 marshalling | Speedup   |
+|----------------:|--------------:|-----------:|--------------------------------:|:----------|
+|             128 |          4.55 |       2.69 |                            2.04 | 1.7x      |
+|             256 |          8.96 |       4.87 |                            4.52 | 1.8x      |
+|             512 |         18.81 |       8.8  |                            9.16 | 2.1x      |
+|            1024 |         39.48 |      19.1  |                           19.6  | 2.1x      |
+|            2048 |         86.61 |      37.02 |                           33.79 | 2.3x      |
+
+**Allocator operations**
+
+| Operation                                |   Python (us) |   C++ (us) | Speedup   |
+|:-----------------------------------------|--------------:|-----------:|:----------|
+| can_append (once per sequence per token) |         0.246 |      0.16  | 1.5x      |
+| alloc + release of a 34-block table      |         4.175 |      1.272 | 3.3x      |
+
+**What that is as a share of one engine step** (mean step 70.3 ms, measured)
+
+|   Running batch | Python   | C++     | Python, share of a step   | C++, share of a step   |
+|----------------:|:---------|:--------|:--------------------------|:-----------------------|
+|               8 | 22.7 us  | 11.4 us | 0.032%                    | 0.016%                 |
+|              12 | 24.7 us  | 12.6 us | 0.035%                    | 0.018%                 |
+|              24 | 30.6 us  | 16.5 us | 0.044%                    | 0.023%                 |
+
+**The price of releasing the GIL, which is why the port does not**
+
+| Measurement                                  |   ns per call |
+|:---------------------------------------------|--------------:|
+| a bound no-op, GIL held throughout           |            48 |
+| the same no-op, GIL released and re-acquired |            83 |
+| cost of the release/re-acquire pair          |            35 |
+
+<!-- /CORE_BENCH -->
+
+Two results worth more than the speedup column.
+
+**Almost all of the C++ `match` call is the pybind11 boundary.** Timing a
+function that does nothing but accept the same prompt list gives essentially
+the whole cost of the real call: converting a 512-element Python list into a
+`std::vector<int32_t>` is the work. The tree walk itself — a handful of hash
+lookups over block-sized keys — is below the noise floor of the measurement.
+Any further optimisation of this structure would have to change how the prompt
+crosses the boundary, not what happens after it arrives.
+
+**The Python reference was quietly quadratic, and fixing it was part of doing
+this honestly.** `match` compared each node's edge against `token_ids[i:limit]`
+— a fresh slice of up to the whole remaining prompt, on every node visited, so
+a 512-token lookup copied ~30 slices to compare a few hundred integers.
+Comparing in place removes the only super-linear term. It also cuts the
+measured C++ advantage roughly in half, which is exactly why a comparison
+against an unoptimised reference is not a comparison.
+
+### End to end: the delta is nothing, and it had to be
+
+Two rungs identical in every respect except `CADENCE_KV_CORE`, run through the
+same rate-major, rotated-order runner the ablation ladder uses, so the
+comparison is protected from thermal drift the same way:
+
+<!-- CORE_AB -->
+
+| KV core          |   Offered (rps) |   Throughput |   Goodput |   SLO met |   TTFT p50 |   ITL p99 |   E2E p50 |   E2E p99 |
+|:-----------------|----------------:|-------------:|----------:|----------:|-----------:|----------:|----------:|----------:|
+| C++17 core       |             1   |        1.234 |     1.085 |     0.879 |      0.069 |     0.352 |     1.279 |     8.655 |
+| Python reference |             1   |        1.234 |     1.085 |     0.879 |      0.068 |     0.352 |     1.275 |     8.517 |
+| C++17 core       |             1.4 |        1.67  |     1.19  |     0.713 |      0.095 |     0.384 |     2.143 |    14.894 |
+| Python reference |             1.4 |        1.67  |     1.19  |     0.713 |      0.113 |     0.382 |     2.08  |    14.796 |
+| C++17 core       |             1.9 |        2.079 |     1.023 |     0.492 |      0.436 |     0.438 |     4.037 |    30.751 |
+| Python reference |             1.9 |        2.079 |     1.05  |     0.505 |      0.42  |     0.42  |     3.954 |    28.584 |
+
+**C++ relative to Python**
+
+|   Offered (rps) | Goodput   | Throughput   | TTFT p50   | ITL p99   | E2E p99   |
+|----------------:|:----------|:-------------|:-----------|:----------|:----------|
+|             1   | +0.0%     | +0.0%        | +1.7%      | -0.2%     | +1.6%     |
+|             1.4 | +0.0%     | +0.0%        | -15.9%     | +0.5%     | +0.7%     |
+|             1.9 | -2.5%     | +0.0%        | +3.8%      | +4.3%     | +7.6%     |
+
+<!-- /CORE_AB -->
+
+Throughput is identical to three decimal places at every rate. Goodput is
+identical at 1.0 and 1.4 rps and 2.5% *lower* for the C++ arm at 1.9; p50 TTFT
+is 16% lower for C++ at 1.4 rps and 4% higher at 1.9. The signs disagree across
+rates and across metrics, which is what noise looks like — the Week 2
+replicates put run-to-run spread at 1.7%, and 1.9 rps is past rung 4's knee
+where the spread is larger still. There is no effect here to attribute.
+
+The arithmetic said so before the run did. The KV bookkeeping is 23–31 µs per
+step in Python and 11–17 µs in C++ across the plausible batch range, against a
+**measured mean step of 70 ms**: 0.03% of a step becoming 0.02% of a step.
+Nothing downstream of that can move a latency percentile.
+
+That is the honest framing and it is the one worth having: **a 2.1× 
+microbenchmark win is a 0% end-to-end win here, because the 0.5B model's
+forward pass is roughly four orders of magnitude more expensive than the
+bookkeeping around it.** The port would start to pay as that ratio closes —
+bigger batches, a smaller or quantised-further model, faster hardware, or
+speculative decoding where the scheduler runs several times per accepted token
+— and that is a hypothesis this repository has not tested rather than a result
+it has.
+
+### Proving the port is correct, not just fast
+
+Two independent lines of evidence, because "I rewrote it in C++" is a claim.
+
+**The specification's own tests run against both.** Every hand-written test in
+`tests/test_block_manager.py` and `tests/test_radix_cache.py` is parametrised
+over the two implementations: thirteen cases in each file, run twice — 52
+test executions in all. The Python module *is* the
+specification, so correctness means passing the specification's tests, not
+only agreeing with it on random inputs. Making that
+possible is why the caches grew a `paths()` method: a test that asserted on
+`root.children` could only ever run against one of them.
+
+**Differential fuzz.** `tests/test_kv_parity.py` draws random operation
+sequences — allocate, share, fork, append, insert, match, pin, evict — and
+drives both implementations through them in lockstep, comparing every
+observable after every step: matched token counts, hit rates, node liveness,
+eviction counts, the owner sequences handed back to the scheduler, **and the
+block ids themselves**. The guide suggests not comparing block ids because they
+are an implementation detail; here they are not, because both allocators are
+LIFO stacks driven by the same operation sequence, so an id is a function of
+the input and asserting on it turns a class of bookkeeping bugs from
+"eventually visible" into "visible on the operation that caused it".
+
+600 sequences of 30–200 operations run on every PR, 5 000 on `main`. A
+differential test that never reaches an interesting state passes for the wrong
+reason, so each sequence reports what it exercised, and the distribution is in
+the CI log rather than assumed:
+
+| Reached at least once | Share of the 5 000 sequences |
+|---|---:|
+| a prefix hit | 40% |
+| a copy-on-write | 65% |
+| an eviction | 90% |
+| an edge split | 28% |
+| the block pool exhausted | 9% |
+
+### What the two implementations agree on, in the type system
+
+`cadence/engine/kv/protocols.py` is the interface the scheduler depends on, and
+`build_kv` is annotated as returning it, so if either implementation drifts
+from the other's surface mypy says so before a benchmark does. Writing it down
+found the one place where the claim is false: a prefix-cache *node* is not
+interchangeable — the Python cache hands out a `Node` and the C++ one a
+`NodeRef`, and neither accepts the other's. The contract the scheduler actually
+honours is narrower than a shared type would express ("hand the handle back to
+the cache that gave it to you"), so the protocol says `Any` and says why. mypy
+runs enforced rather than advisory from this week.
+
+---
+
 ## What is in the box
 
 ### The scheduler (`src/cadence/engine/scheduler/continuous.py`)
@@ -549,6 +879,26 @@ Hit rate is reported **token-level**, not request-level, because partial hits
 are the normal case and a request-level rate would hide most of what the cache
 does.
 
+### The C++17 KV core (`src/cpp/`)
+
+Two headers and a bindings file: `BlockAllocator` (a LIFO free-list stack, a
+flat refcount vector, O(1) allocate/share/release/copy-on-write) and
+`RadixCache` (block-keyed children, owner sequences, LRU eviction over
+unreferenced leaves on a logical clock). Built on install by scikit-build-core;
+selected by `CADENCE_KV_CORE`; held to the Python reference by
+`tests/test_kv_parity.py`.
+
+Three binding decisions carry the drop-in contract. Block tables stay Python
+lists and are mutated in place, because the operations only ever read the
+length and one element — converting the table on every decode step would cost
+O(len) to save nothing. `OutOfBlocks` is translated back into the *Python*
+exception class, because the scheduler catches it by identity and a same-named
+C++ exception would sail through `except OutOfBlocks` and kill the engine
+thread. And the GIL is held for the whole of every call, which is what makes
+each operation atomic against the `/stats` reader on the API thread.
+
+What it was worth is measured in [Week 3](#week-3-the-c17-core-and-what-it-was-actually-worth).
+
 ### The model runner (`src/cadence/engine/backends/`)
 
 `ModelRunner` exposes step-level decoding: `decode_step` takes a list of
@@ -590,7 +940,15 @@ emptying a panel three weeks later.
 ```bash
 uv run pytest -q -m "not slow"   # no model needed; this is what CI runs
 uv run pytest -q -m slow         # against the real GGUF
+
+# the differential fuzz on its own, at the depth main runs it
+CADENCE_FUZZ_EXAMPLES=5000 uv run pytest -q tests/test_kv_parity.py \
+  --hypothesis-show-statistics
 ```
+
+The KV tests are parametrised over both implementations of the core, so a
+green suite means the C++ extension satisfies the Python reference's own
+specification and not merely that the two agree on random inputs.
 
 The tests worth knowing about:
 
@@ -599,9 +957,10 @@ The tests worth knowing about:
 | `test_backend_equivalence` | Two sequences decoded in one batch produce what they produce decoded apart (≥99% top-token agreement — batching genuinely changes numerics, so bit-exactness is the wrong assertion). Chunked prefill likewise. |
 | `test_kv_isolation` | Cross-request contamination, against the real model. Prefix cache on vs off, and paged vs contiguous, must produce identical text. |
 | `test_loadgen` | The harness itself: exponential arrivals, latency from intended arrival, arrival rate unaffected by a slow server, warm-up rows flagged rather than dropped. |
-| `test_block_manager` | Hypothesis property: a block is on the free list iff its refcount is zero, never twice, and nothing leaks. Plus copy-on-write. |
-| `test_radix_cache` | Block-boundary truncation, referenced nodes never evicted, LRU over leaves, owner-sequence release, no block leak over insert/evict cycles. |
-| `test_scheduler` | A late arrival joins the running batch (and, under static batching, provably cannot). KV blocks and sequence ids return to baseline after a run and after a mid-stream client disconnect. |
+| `test_block_manager` | Hypothesis property: a block is on the free list iff its refcount is zero, never twice, and nothing leaks. Plus copy-on-write. **Runs against both the Python reference and the C++ core.** |
+| `test_radix_cache` | Block-boundary truncation, referenced nodes never evicted, LRU over leaves, owner-sequence release, no block leak over insert/evict cycles. **Runs against both implementations.** |
+| `test_kv_parity` | The differential fuzz: random operation sequences driven through the Python reference and the C++17 core in lockstep, comparing every observable — including block ids — after every step. 600 sequences per PR, 5 000 on `main`, with the coverage each sequence reached reported rather than assumed. |
+| `test_scheduler` | A late arrival joins the running batch (and, under static batching, provably cannot). KV blocks and sequence ids return to baseline after a run and after a mid-stream client disconnect. A prefix matched during admission is not evicted out from under the admission decision — the Week 3 crash, with both failure modes covered. `CADENCE_KV_CORE=auto` degrades to the Python reference when the extension is missing, and an explicit `cpp` refuses to. |
 | `test_api_sse` | An unmodified `openai` Python client streams against the server. Concurrent streams carry only their own tokens. Dashboard queries reference metrics that exist. |
 
 ---
@@ -725,6 +1084,28 @@ ITL difference is not. The knob exists and is worth having; on *this* workload,
 where prefill is small relative to decode, prefill-first is simply the right
 default and the trade-off curve the guide expects to see is flat.
 
+**8. The C++ port is a 2.1× microbenchmark win and a 0% end-to-end win.** The
+profile put the two data structures at 0.02% of scheduler-thread time before
+the port started, and the arithmetic — 23–31 µs of bookkeeping against a
+measured 70 ms engine step — said the end-to-end delta had to be far smaller
+than the 1.7% run-to-run spread. It is: throughput identical to three decimal
+places at every rate, and goodput differences that change sign between rates.
+The measured speedup is also capped by something other than the algorithm:
+nearly all of the C++ `match` call is pybind11 converting the prompt list into
+a `std::vector`, and the tree walk is below the noise floor. Reported in full in
+[Week 3](#week-3-the-c17-core-and-what-it-was-actually-worth), because a port
+justified after the fact by the speedup it did not deliver is the failure mode
+this section exists to avoid.
+
+**9. Two of the four correctness bugs found in this project so far were found
+by instruments, not by tests.** Hypothesis found the copy-on-write accounting
+error in `can_append`; the Week 3 profiling run found the use-after-free in
+admission by crashing the engine thread within a minute of being pointed at a
+configuration the ladder never reached. Both had been on `main`, both passed
+the whole suite. The lesson recorded here is about coverage of *states*, not of
+lines: the pressure regime that triggers a bug is a thing a test has to be told
+to reach.
+
 **Stated omissions.** Swapping preempted KV to host memory is the standard
 alternative to recompute; it trades memory bandwidth for wasted prefill compute
 and is not built — recompute is 20 lines and the prompts here are short enough
@@ -743,13 +1124,14 @@ sequence is preempted.
 | 0 | Toolchain, repository scaffold | Done |
 | 1 | SSE gateway, FIFO baseline, open-loop load generator, metric definitions | Done |
 | 2 | Continuous batching, paged KV, radix prefix cache, metrics + tracing stack | Done |
-| 3 | Block allocator and radix match in C++17 behind pybind11, fuzz-tested against the Python reference | Not started |
+| 3 | Block allocator and radix match in C++17 behind pybind11, fuzz-tested against the Python reference | Done |
 | 4 | Latency predictor + split-conformal admission control | Not started |
 | 5 | Full ablation ladder with seeds, CI load gate, deploy, writeup | Partial — the four-rung ladder, the charts and the writeup exist; rung 5, multiple seeds and the CI load gate are Week 5 |
 
-Week 3 will begin with `py-spy record` under load, and the port happens only if
-the profile says the allocator and radix match are on the hot path — and if it
-says otherwise, that gets written down too.
+Week 3 began with a profile under load, the profile said the allocator and the
+radix match are *not* on the hot path, and that is written down: see
+[Week 3](#week-3-the-c17-core-and-what-it-was-actually-worth) for what was
+ported anyway and why.
 
 ### What is deliberately not here yet
 
@@ -761,7 +1143,7 @@ is worth being explicit about which:
 | Rung 5 (conformal admission) | Week 4. Its absence is why "holds p99 under overload" is not claimed. |
 | Three seeds per rung | The ladder is one seed. Run-to-run spread *is* quantified — three replicates of one configuration agree to within 1.7% on every metric — but that is not the same as three arrival realisations, and the Week 5 table will need the latter. |
 | CI load-test regression gate | The CI runs correctness, lint and a check that the README's numbers match the committed parquet. It does not yet fail a PR on a goodput regression. |
-| C++ extension | Week 3. `tests/test_radix_parity.py` skips rather than passing vacuously. |
+| An end-to-end win from the C++ core | There isn't one, and the arithmetic says there could not be at this model size. The claim the port supports is correctness and a written-down interface, not speed. |
 | Live deployment URL | `docker compose` is committed but unverified (no Docker on this machine — see above). |
 | Empirical coverage plot | Week 4; there is no predictor to have coverage yet. |
 
@@ -776,21 +1158,33 @@ src/cadence/
     engine.py           owns backend + scheduler + admission policy
     request.py          lifecycle state machine, cross-thread streaming
     scheduler/          fifo.py, static_batch.py, continuous.py
-    kv/                 block_manager.py, radix_cache.py  (Python reference)
+    kv/                 block_manager.py, radix_cache.py  (Python reference),
+                        protocols.py (the interface both cores satisfy),
+                        cpp.py (the C++ core, assembled the same way)
     backends/           base.py protocol, llamacpp.py, mock.py
   admission/    Week 4: features, predictor, conformal, controller
-  obs/          Prometheus collectors, OpenTelemetry setup
-src/cpp/        Week 3: block_allocator, radix_cache, pybind11 bindings
+  obs/          Prometheus collectors, OpenTelemetry setup, sampling profiler
+  _core.pyi     hand-written stubs for the extension
+src/cpp/        the C++17 KV core
+  include/cadence/    block_allocator.hpp, radix_cache.hpp
+  src/bindings.cpp    pybind11 module, built by scikit-build-core on install
 bench/          calibrate, validate_loadgen, loadgen, workloads, stub_server,
-                run_sweep, run_ladder, run_knobs, merge_rerun,
-                analyze, charts, make_report, knob_report, embed_tables
+                run_sweep, run_ladder, run_knobs, merge_rerun, srchash,
+                run_ablation.sh, run_week3.sh,
+                profile_core, flamegraph, bench_core,
+                analyze, charts, make_report, knob_report, core_report,
+                embed_tables
 deploy/         docker-compose, Prometheus, OTel collector, generated Grafana dashboard
 results/
   calibration.json        machine measurements the sweep grid and SLO were chosen from
   loadgen_validation.json arrival process over 200 seeds
-  src.hash                engine revision the ladder was measured on
+  src.hash                engine source fingerprint (bench/srchash.py), stamped
+                          into every run's meta.json from Week 3 on
   w2_ladder/              the four-rung ladder, plus meta.json provenance
   w2_knobs/               chunked-prefill sweep, prefill/decode order, replicates
+  w3_profile/             sampling profile of the scheduler thread, per KV core
+  w3_bench/               the C++/Python microbenchmark
+  w3_ab/                  the end-to-end A/B between the two KV cores
   validation/             open-loop generator checked against a model-free stub
 docs/           tables and figures, all generated from the parquet above
 tests/

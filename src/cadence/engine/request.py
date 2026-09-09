@@ -20,6 +20,10 @@ import enum
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # a cycle at runtime, a type at check time
+    from cadence.obs.tracing import RequestTrace
 
 _SENTINEL = object()
 
@@ -60,7 +64,7 @@ class Request:
 
     # --- cross-thread streaming plumbing ---------------------------------
     loop: asyncio.AbstractEventLoop | None = None
-    trace: object | None = None
+    trace: RequestTrace | None = None
     """A :class:`~cadence.obs.tracing.RequestTrace`, or None when tracing is off."""
     _q: asyncio.Queue = field(default_factory=asyncio.Queue, repr=False)
     _cancelled: bool = False

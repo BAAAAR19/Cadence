@@ -3,6 +3,12 @@
 The copy-on-write path gets the most attention here, because it is where paged
 caches actually break, and because the failure is silent: one user's tokens
 appear in another user's stream.
+
+Every test runs twice: once against the Python reference and once against the
+C++17 extension (the ``kv`` fixture in conftest). The Python module is the
+specification, so the extension is not "correct" because it agrees with the
+reference on random inputs -- that is tests/test_kv_parity.py -- but because
+it satisfies the specification's own tests.
 """
 
 from __future__ import annotations
@@ -11,28 +17,28 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from cadence.engine.kv.block_manager import BlockManager, ContiguousBlockManager, OutOfBlocks
+from cadence.engine.kv.block_manager import OutOfBlocks
 
 
-def test_free_list_is_lifo():
+def test_free_list_is_lifo(kv):
     """Recently freed blocks are handed out first: they are the ones most
     likely to still be warm."""
-    bm = BlockManager(8, block_size=16)
+    bm = kv.BlockManager(8, block_size=16)
     a = bm.alloc(3)
     bm.release([a[1]])
     assert bm.alloc(1) == [a[1]]
 
 
-def test_alloc_is_all_or_nothing():
-    bm = BlockManager(4, 16)
+def test_alloc_is_all_or_nothing(kv):
+    bm = kv.BlockManager(4, 16)
     bm.alloc(3)
     with pytest.raises(OutOfBlocks):
         bm.alloc(2)
     assert bm.free_blocks() == 1, "a failed alloc must consume nothing"
 
 
-def test_share_and_release_refcounts():
-    bm = BlockManager(4, 16)
+def test_share_and_release_refcounts(kv):
+    bm = kv.BlockManager(4, 16)
     b = bm.alloc(2)
     bm.share(b)
     bm.release(b)
@@ -41,16 +47,16 @@ def test_share_and_release_refcounts():
     assert bm.free_blocks() == 4
 
 
-def test_double_free_is_loud():
-    bm = BlockManager(2, 16)
+def test_double_free_is_loud(kv):
+    bm = kv.BlockManager(2, 16)
     b = bm.alloc(1)
     bm.release(b)
     with pytest.raises(RuntimeError):
         bm.release(b)
 
 
-def test_copy_on_write_privatises_a_shared_block():
-    bm = BlockManager(8, 16)
+def test_copy_on_write_privatises_a_shared_block(kv):
+    bm = kv.BlockManager(8, 16)
     shared = bm.alloc(1)
     bm.share(shared)  # two sequences now hold it
     a_table, b_table = list(shared), list(shared)
@@ -63,15 +69,15 @@ def test_copy_on_write_privatises_a_shared_block():
     assert bm.n_copy_on_write == 1
 
 
-def test_no_copy_when_not_shared():
-    bm = BlockManager(8, 16)
+def test_no_copy_when_not_shared(kv):
+    bm = kv.BlockManager(8, 16)
     t = bm.alloc(1)
     assert bm.fork_for_write(t, 0) == t[0]
     assert bm.n_copy_on_write == 0
 
 
-def test_append_slot_grows_and_forks():
-    bm = BlockManager(8, block_size=4)
+def test_append_slot_grows_and_forks(kv):
+    bm = kv.BlockManager(8, block_size=4)
     table = bm.alloc(1)
     # Fill the first block: four tokens, no new allocation.
     for n in range(4):
@@ -82,8 +88,8 @@ def test_append_slot_grows_and_forks():
     assert len(table) == 2
 
 
-def test_append_into_a_shared_tail_block_forks_it():
-    bm = BlockManager(8, block_size=4)
+def test_append_into_a_shared_tail_block_forks_it(kv):
+    bm = kv.BlockManager(8, block_size=4)
     table = bm.alloc(1)
     bm.share(table)  # a peer holds the same partially-filled block
     peer = list(table)
@@ -91,17 +97,17 @@ def test_append_into_a_shared_tail_block_forks_it():
     assert table[0] != peer[0], "wrote into a block another sequence still holds"
 
 
-def test_can_append_reports_the_memory_ceiling():
-    bm = BlockManager(2, block_size=4)
+def test_can_append_reports_the_memory_ceiling(kv):
+    bm = kv.BlockManager(2, block_size=4)
     t = bm.alloc(2)
     assert bm.can_append(t, n_filled=7)
     assert not bm.can_append(t, n_filled=8), "no blocks left to grow into"
 
 
-def test_can_append_accounts_for_the_copy_a_shared_block_will_need():
+def test_can_append_accounts_for_the_copy_a_shared_block_will_need(kv):
     """Spare room inside a shared block is not usable room: the write has to
     privatise it first, and that copy needs a free block."""
-    bm = BlockManager(2, block_size=4)
+    bm = kv.BlockManager(2, block_size=4)
     t = bm.alloc(1)
     bm.share(t)          # a peer holds the same partially-filled block
     bm.alloc(1)          # ...and the pool is now empty
@@ -111,23 +117,27 @@ def test_can_append_accounts_for_the_copy_a_shared_block_will_need():
     )
 
 
-def test_contiguous_allocator_reserves_more_than_paged():
-    paged = BlockManager(1024, 16)
-    contig = ContiguousBlockManager(1024, 16, reserve_tokens=512)
+def test_contiguous_allocator_reserves_more_than_paged(kv):
+    paged = kv.BlockManager(1024, 16)
+    contig = kv.ContiguousBlockManager(1024, 16, reserve_tokens=512)
     # A request with a 600-token prompt that only wants 32 tokens out.
     assert paged.blocks_needed(600, 32) < contig.blocks_needed(600, 32)
     # ...and the contiguous slab ignores the request's own budget entirely.
     assert contig.blocks_needed(600, 32) == contig.blocks_needed(600, 512)
 
 
-def test_fragmentation_ratio():
-    bm = BlockManager(16, block_size=16)
+def test_fragmentation_ratio(kv):
+    bm = kv.BlockManager(16, block_size=16)
     bm.alloc(2)
     assert bm.fragmentation_ratio([32]) == 1.0
     assert bm.fragmentation_ratio([17]) == pytest.approx(17 / 32)
 
 
-@settings(max_examples=300, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@settings(
+    max_examples=300,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow, HealthCheck.function_scoped_fixture],
+)
 @given(
     ops=st.lists(
         st.tuples(
@@ -137,10 +147,10 @@ def test_fragmentation_ratio():
         max_size=120,
     )
 )
-def test_refcounts_and_free_list_stay_consistent(ops):
+def test_refcounts_and_free_list_stay_consistent(kv, ops):
     """Property: however the allocator is driven, a block is on the free list
     if and only if its refcount is zero, and no block is ever on it twice."""
-    bm = BlockManager(24, block_size=16)
+    bm = kv.BlockManager(24, block_size=16)
     held: list[list[int]] = []
     for op, k in ops:
         if op == "alloc":

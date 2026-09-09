@@ -21,6 +21,9 @@ TABLES = {
     "SLO": "slo_sensitivity.md",
     "METHOD": "methodology.md",
     "KNOBS": "knobs.md",
+    "CORE_PROFILE": "core_profile.md",
+    "CORE_BENCH": "core_bench.md",
+    "CORE_AB": "core_ab.md",
 }
 
 
@@ -54,8 +57,8 @@ def main(argv=None) -> None:
         if out != text:
             raise SystemExit(
                 f"{readme} is stale: regenerate with "
-                f"`uv run bench/make_report.py results/w2_ladder --slo 4.0 --outdir docs` "
-                f"then `uv run bench/embed_tables.py`"
+                f"`uv run bench/make_report.py results/w2_ladder --slo 4.0 --outdir docs`, "
+                f"`uv run bench/core_report.py` then `uv run bench/embed_tables.py`"
             )
         print(f"{readme} is up to date")
         return

@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from configs import env_for  # noqa: E402
 from loadgen import RunConfig, interarrival_ks, run  # noqa: E402
 from run_sweep import Gateway, warm  # noqa: E402
+from srchash import source_hash  # noqa: E402
 from workloads import build_workload  # noqa: E402
 
 
@@ -64,6 +65,11 @@ def main(argv=None) -> None:
             {
                 "argv": sys.argv,
                 "started": datetime.now(UTC).isoformat(timespec="seconds"),
+                # A fingerprint of the engine source these numbers came from;
+                # see bench/srchash.py. Recorded here rather than only in
+                # results/src.hash so that a results directory carries its own
+                # provenance.
+                "src_hash": source_hash(),
                 "rungs": {r: env_for(r, extra) for r in rungs},
                 "rates": rates,
                 "seeds": seeds,

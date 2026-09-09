@@ -35,6 +35,7 @@ except ImportError as exc:  # pragma: no cover
 from cadence.engine.backends.base import SeqState
 
 _LOG_SILENCED = False
+_LOG_SINK = None  # see _silence_llama_log
 
 
 class KVSlotUnavailable(RuntimeError):
@@ -52,7 +53,7 @@ def _silence_llama_log() -> None:
     """llama.cpp writes its loader chatter to stderr, which drowns out the
     benchmark output and, worse, costs measurable time inside the decode loop
     on a verbose build."""
-    global _LOG_SILENCED
+    global _LOG_SILENCED, _LOG_SINK
     if _LOG_SILENCED:
         return
 
@@ -61,7 +62,10 @@ def _silence_llama_log() -> None:
         return None
 
     llama_cpp.llama_log_set(_sink, ctypes.c_void_p(0))
-    _silence_llama_log._sink = _sink  # keep the callback alive
+    # Held in a module global, not an attribute on the function: llama.cpp
+    # keeps the raw pointer, so if Python collects the ctypes callback the
+    # next log line calls into freed memory.
+    _LOG_SINK = _sink
     _LOG_SILENCED = True
 
 

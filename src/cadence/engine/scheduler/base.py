@@ -15,6 +15,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from typing import Any
 
 from cadence.engine.backends.base import DetokenizerState, SeqState
 from cadence.engine.request import Request, State
@@ -53,7 +54,13 @@ class Live:
     seq: SeqState
     detok: DetokenizerState
     last_token_t: float = 0.0
-    prefix_node: object | None = None
+    prefix_node: Any = None
+    """The prefix-cache handle this request pinned, or None.
+
+    Untyped on purpose: it is whatever the cache that produced it hands out --
+    a Python ``Node`` or a C++ ``NodeRef`` -- and the scheduler's only contract
+    is to give it back to the same cache. See cadence.engine.kv.protocols.
+    """
     matched_tokens: int = 0
     shared_blocks: list[int] = field(default_factory=list)
 

@@ -1,0 +1,74 @@
+{
+  "argv": [
+    "--backends",
+    "llamacpp",
+    "--rate",
+    "1.9",
+    "--duration",
+    "150",
+    "--warmup",
+    "20",
+    "--cooldown",
+    "5",
+    "--slo",
+    "4.0",
+    "--hz",
+    "500",
+    "--kv-core",
+    "cpp",
+    "--port",
+    "8312",
+    "--outdir",
+    "results/w3_profile/cpp"
+  ],
+  "started": "2026-09-09T18:52:34+00:00",
+  "src_hash": "f023ba37508b",
+  "sampler": "cadence.obs.profiler (in-process; py-spy needs root on macOS)",
+  "hz": 500,
+  "runs": [
+    {
+      "backend": "llamacpp",
+      "kv_core": "cpp",
+      "rate_rps": 1.9,
+      "duration_s": 150.0,
+      "completed": 324,
+      "sampled_s": 154.908676,
+      "busy_s": 151.969864,
+      "busy_frac": 0.9810287449619671,
+      "prefix_hit_rate": 0.6358680316489271,
+      "sampler": {
+        "thread": "cadence-engine",
+        "hz_requested": 500.0,
+        "hz_achieved": 386.8,
+        "n_samples": 59932,
+        "n_missed": 0,
+        "elapsed_s": 154.939
+      },
+      "steps": {
+        "n_steps": 2671,
+        "step_total_s": 151.70264607478748,
+        "mean_step_s": 0.05679619845555503
+      },
+      "buckets": {
+        "scheduler": {
+          "inclusive_pct": 100.0,
+          "self_pct": 0.0
+        },
+        "model runner": {
+          "inclusive_pct": 100.0,
+          "self_pct": 92.72676719642257
+        },
+        "tokenizer (llama.cpp)": {
+          "inclusive_pct": 4.063131227122767,
+          "self_pct": 4.063131227122767
+        },
+        "sampling (numpy)": {
+          "inclusive_pct": 3.2083900529120695,
+          "self_pct": 3.2083900529120695
+        }
+      },
+      "folded": "results/w3_profile/cpp/llamacpp.folded",
+      "svg": "results/w3_profile/cpp/llamacpp.svg"
+    }
+  ]
+}

@@ -26,13 +26,32 @@ jobs:
         # on the developer machine instead. Everything else -- the scheduler,
         # the KV bookkeeping, the load generator, the OpenAI surface -- runs on
         # the deterministic mock backend and is enforced on every PR.
+        #
+        # This also builds the C++17 extension: `uv sync` installs the project,
+        # and the project's build backend is scikit-build-core. A compiler
+        # failure is therefore a red PR rather than a silent fallback to the
+        # Python reference.
         run: uv sync --all-groups --no-install-package llama-cpp-python
+
+      - name: The C++ core is actually built
+        # Without this the suite would still be green with the extension
+        # missing -- every test that needs it skips -- which is exactly the
+        # failure mode the differential test exists to prevent.
+        run: |
+          uv run python -c "import cadence._core; print(cadence._core.__doc__)"
+          uv run python -c "
+          from cadence.engine.kv import core_name
+          assert core_name('auto') == 'cpp', 'the extension built but auto did not pick it'
+          print('kv core:', core_name('auto'))"
 
       - name: Lint
         run: uv run ruff check src bench tests
 
       - name: Types
-        run: uv run mypy src/cadence || true   # advisory until Week 3
+        # Enforced from Week 3: the KV core has two implementations and the
+        # protocols in cadence/engine/kv/protocols.py are what says they are
+        # interchangeable. That claim is only worth having if it is checked.
+        run: uv run mypy src/cadence
 
       - name: Dashboard/metric consistency
         run: uv run python deploy/grafana/make_dashboard.py && git diff --exit-code deploy/grafana/dashboards
@@ -42,11 +61,22 @@ jobs:
         # This fails if someone edited a number by hand or forgot to regenerate.
         run: |
           uv run bench/make_report.py results/w2_ladder --slo 4.0 --outdir docs
+          uv run bench/core_report.py --slo 4.0 --outdir docs
           uv run bench/embed_tables.py --check
           git diff --exit-code docs README.md
 
       - name: Tests
         run: uv run pytest -q -m "not slow" --durations=10
+
+      - name: Differential fuzz, deeper
+        # The suite runs the C++/Python differential test at 600 random
+        # operation sequences. On main it runs at 5000, because the failures
+        # this catches are rare interleavings and a nightly-depth run is
+        # cheap when the whole core is two headers.
+        if: github.ref == 'refs/heads/main'
+        env:
+          CADENCE_FUZZ_EXAMPLES: "5000"
+        run: uv run pytest -q tests/test_kv_parity.py --hypothesis-show-statistics
 
   # Week 5 adds the load-test regression gate here: a short open-loop run
   # against the mock backend with a committed goodput floor, so a scheduling

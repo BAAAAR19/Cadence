@@ -15,7 +15,8 @@ produce a trace that is confidently wrong.
 from __future__ import annotations
 
 from opentelemetry import trace
-from opentelemetry.trace import set_span_in_context
+from opentelemetry.context import Context
+from opentelemetry.trace import Span, set_span_in_context
 
 tracer = trace.get_tracer("cadence")
 
@@ -56,9 +57,9 @@ class RequestTrace:
 
     def __init__(self, rid: str, enabled: bool, **attrs) -> None:
         self.enabled = bool(enabled)
-        self._span = None
-        self._ctx = None
-        self._phase = None
+        self._span: Span | None = None
+        self._ctx: Context | None = None
+        self._phase: Span | None = None
         self._phase_name: str | None = None
         if not self.enabled:
             return

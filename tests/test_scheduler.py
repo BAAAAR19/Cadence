@@ -226,11 +226,11 @@ async def test_shed_returns_503_with_retry_after():
 
 
 @pytest.mark.asyncio
-async def test_sequence_ids_are_conserved_with_the_prefix_cache_on():
+async def test_sequence_ids_are_conserved_with_the_prefix_cache_on(kv_core):
     """Sequence ids are held by running requests *and* by cached prefixes.
     Every id must be in exactly one of those places or on the free list."""
     system = "shared. " * 300
-    async with _App(_cfg(n_parallel=16, max_batch=4)) as a:
+    async with _App(_cfg(n_parallel=16, max_batch=4, kv_core=kv_core)) as a:
         sched = a.engine.scheduler
         total = sched.seq_ids.n
         for _ in range(4):
@@ -239,7 +239,7 @@ async def test_sequence_ids_are_conserved_with_the_prefix_cache_on():
             if not sched.running:
                 break
             await asyncio.sleep(0.01)
-        owned = len(sched.prefix._seq_refs)
+        owned = sched.prefix.n_owned_sequences()
         assert sched.seq_ids.available + owned == total, (
             f"free={sched.seq_ids.available} cache-owned={owned} of {total}"
         )
@@ -249,7 +249,7 @@ async def test_sequence_ids_are_conserved_with_the_prefix_cache_on():
 
 
 @pytest.mark.asyncio
-async def test_paged_allocation_sustains_a_larger_batch_than_contiguous():
+async def test_paged_allocation_sustains_a_larger_batch_than_contiguous(kv_core):
     """Step 2.3's exit test.
 
     Same KV pool, same workload, same everything except the reservation policy:
@@ -262,6 +262,7 @@ async def test_paged_allocation_sustains_a_larger_batch_than_contiguous():
         cfg = _cfg(
             enable_paged_kv=paged, enable_prefix_cache=False,
             kv_blocks=400, max_batch=16, max_tokens_cap=512, n_parallel=32,
+            kv_core=kv_core,
         )
         async with _App(cfg) as a:
             sched = a.engine.scheduler
@@ -314,3 +315,137 @@ async def test_preemption_actually_fires_when_the_pool_is_outgrown():
     for r in rs:
         assert r.json()["choices"][0]["message"]["content"]
     assert after > before, "the pool was never outgrown; the test proves nothing"
+
+
+# --- the pinned-match invariant ------------------------------------------
+#
+# Found by the Week 3 profiling run, which crashed the engine thread inside a
+# minute at 4 rps on the mock backend: admission matched a prefix, then found
+# itself short of blocks, then reclaimed by evicting the LRU leaf -- which was
+# the node it had just matched. See ContinuousScheduler._pinned_match.
+
+
+def _bare_scheduler(**kw):
+    """A scheduler with no HTTP layer, so a single ``_schedule()`` call can be
+    inspected."""
+    from cadence.engine.backends.mock import MockRunner
+    from cadence.engine.kv import build_kv
+    from cadence.engine.scheduler.continuous import ContinuousScheduler
+    from cadence.obs.metrics import Metrics
+
+    cfg = _cfg(**kw)
+    runner = MockRunner(cfg)
+    blocks, prefix, _ = build_kv(cfg)
+    sched = ContinuousScheduler(runner, cfg, Metrics("test", False), blocks=blocks,
+                                prefix_cache=prefix)
+    sched.prefix.on_seq_released = sched._release_owner_seq
+    return sched
+
+
+def _queue(sched, prompt_ids, max_tokens=8):
+    import time as _time
+
+    from cadence.engine.request import Request
+
+    rq = Request(rid=f"r{len(sched.waiting)}", prompt_ids=list(prompt_ids),
+                 max_tokens=max_tokens, deadline=_time.perf_counter() + 60.0)
+    sched.waiting.append(rq)
+    return rq
+
+
+@pytest.mark.asyncio
+async def test_reclaim_cannot_evict_the_prefix_admission_just_matched(kv_core):
+    """The regression test for the crash: a request whose prefix is cached,
+    admitted into a pool with too few free blocks, must not have that prefix
+    evicted out from under it."""
+    # 24 blocks of 16 tokens: room for one cached prefix and not much else, so
+    # admission is forced down the reclaim path.
+    sched = _bare_scheduler(kv_blocks=24, block_size=16, max_batch=4, n_parallel=8,
+                            kv_core=kv_core)
+    B = sched.blocks.block_size
+
+    # A cached prefix of 8 blocks, donated by a finished request.
+    shared_tokens = list(range(1, 8 * B + 1))
+    blocks = sched.blocks.alloc(8)
+    node = sched.prefix.insert(shared_tokens, blocks, owner_seq=0)
+    sched.blocks.release(blocks)  # the cache holds the only reference now
+    assert node is not None
+    assert sched.prefix.match(shared_tokens + [999]).n_tokens == 8 * B
+
+    # Occupy most of what is left, so admission must reclaim to fit.
+    hog = sched.blocks.alloc(sched.blocks.free_blocks() - 2)
+
+    rq = _queue(sched, shared_tokens + list(range(9000, 9000 + 2 * B)))
+    prefill, _ = sched._schedule()  # used to raise "cannot share free block"
+
+    if prefill:  # admitted: it must actually be holding the shared blocks
+        assert rq.cached_prefix_len == 8 * B
+        for b in rq.block_ids[:8]:
+            assert sched.blocks.refcount[b] > 0
+    else:  # or it declined to admit -- but it must not have spent the prefix
+        assert sched.prefix.match(shared_tokens + [999]).n_tokens == 8 * B
+    sched.blocks.release(hog)
+
+
+@pytest.mark.asyncio
+async def test_a_declined_admission_neither_spends_nor_leaks_the_prefix(kv_core):
+    """The pin is a loan for the length of one decision, and both ways of
+    getting it wrong are failures.
+
+    Without it, a request that reclaims and then declines to admit has spent
+    the cached prefix to buy a batch slot it did not take -- the node is gone
+    when the next request asks for it. If the loan were never returned, the
+    node could not be evicted again and the cache would fill with
+    unreclaimable entries."""
+    sched = _bare_scheduler(kv_blocks=24, block_size=16, max_batch=4, n_parallel=8,
+                            kv_core=kv_core)
+    B = sched.blocks.block_size
+    shared_tokens = list(range(1, 4 * B + 1))
+    blocks = sched.blocks.alloc(4)
+    node = sched.prefix.insert(shared_tokens, blocks, owner_seq=0)
+    sched.blocks.release(blocks)
+    refs_before = node.refs
+
+    hog = sched.blocks.alloc(sched.blocks.free_blocks())  # nothing left to admit into
+    _queue(sched, shared_tokens + list(range(9000, 9000 + 8 * B)))
+    sched._schedule()
+
+    assert sched.prefix.match(shared_tokens + [999]).n_tokens == 4 * B, (
+        "a declined admission spent the cached prefix"
+    )
+    assert node.refs == refs_before, "admission leaked a reference to the matched node"
+    sched.blocks.release(hog)
+    assert sched.prefix.evict(4) == 4, "the node stayed pinned after the decision"
+
+
+# --- which KV core gets loaded -------------------------------------------
+
+
+def test_kv_core_auto_falls_back_but_an_explicit_request_does_not(monkeypatch):
+    """`auto` degrades quietly to the Python reference; `cpp` refuses to.
+
+    The asymmetry is the point. A gateway on a machine without a compiler
+    should still run; a *benchmark* that believes it measured the extension
+    and quietly measured Python is worse than one that failed.
+    """
+    import cadence.engine.kv as kvmod
+    from cadence.engine.kv import core_name
+
+    monkeypatch.setattr(kvmod, "core_available", lambda: False)
+    assert core_name("auto") == "python"
+    assert core_name("python") == "python"
+    with pytest.raises(RuntimeError, match="not built"):
+        core_name("cpp")
+
+    monkeypatch.setattr(kvmod, "core_available", lambda: True)
+    assert core_name("auto") == "cpp"
+    assert core_name("python") == "python", "an explicit choice is never overridden"
+
+
+@pytest.mark.asyncio
+async def test_stats_reports_which_kv_core_is_running(kv_core):
+    """Every run records the implementation that produced it; the A/B in
+    Week 3 is only interpretable because this is in the parquet's provenance."""
+    async with _App(_cfg(kv_core=kv_core)) as a:
+        r = await a.client.get("/stats")
+        assert r.json()["kv_core"] == kv_core

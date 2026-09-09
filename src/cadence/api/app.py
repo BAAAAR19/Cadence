@@ -25,9 +25,19 @@ def create_app(cfg: Settings | None = None, engine: Engine | None = None) -> Fas
         eng.start()
         app.state.engine = eng
         app.state.cfg = cfg
+        prof = None
+        if cfg.profile_out:
+            from cadence.obs.profiler import SamplingProfiler
+
+            # Started after the scheduler thread exists, stopped before it is
+            # joined, so every sample it takes is of a thread that is running.
+            prof = SamplingProfiler(cfg.profile_out, hz=cfg.profile_hz)
+            prof.start()
         try:
             yield
         finally:
+            if prof is not None:
+                prof.stop()
             eng.stop()
 
     app = FastAPI(title="Cadence", version="0.1.0", lifespan=lifespan)

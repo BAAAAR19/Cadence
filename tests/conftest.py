@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -38,6 +39,53 @@ def llama_runner(model_path):
     runner = LlamaCppRunner(cfg)
     yield runner
     runner.close()
+
+
+@pytest.fixture(params=["python", "cpp"])
+def kv(request):
+    """The KV core under test: the Python reference, or the C++17 extension.
+
+    Every hand-written test of the block manager and the radix cache runs
+    against both. The Python module is the specification, so "the extension is
+    correct" means "the extension passes the specification's own tests" --
+    not only that it agrees with it on random inputs, which is what
+    tests/test_kv_parity.py separately establishes.
+    """
+    if request.param == "cpp":
+        core = pytest.importorskip(
+            "cadence._core", reason="the C++ extension is not built (uv pip install -e .)"
+        )
+        return SimpleNamespace(
+            name="cpp",
+            BlockManager=core.BlockAllocator,
+            ContiguousBlockManager=core.ContiguousBlockAllocator,
+            RadixCache=core.RadixCache,
+        )
+    from cadence.engine.kv.block_manager import BlockManager, ContiguousBlockManager
+    from cadence.engine.kv.radix_cache import RadixCache
+
+    return SimpleNamespace(
+        name="python",
+        BlockManager=BlockManager,
+        ContiguousBlockManager=ContiguousBlockManager,
+        RadixCache=RadixCache,
+    )
+
+
+@pytest.fixture(params=["python", "cpp"])
+def kv_core(request):
+    """``CADENCE_KV_CORE`` for a test that drives the whole engine.
+
+    The ``kv`` fixture above checks the two implementations against the KV
+    specification directly; this one checks that the scheduler cannot tell
+    them apart, which is a different claim and the one the ablation depends
+    on.
+    """
+    if request.param == "cpp":
+        pytest.importorskip(
+            "cadence._core", reason="the C++ extension is not built (uv pip install -e .)"
+        )
+    return request.param
 
 
 @pytest.fixture

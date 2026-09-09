@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="332" viewBox="0 0 1200 332" font-family="Menlo,DejaVu Sans Mono,monospace" font-size="11">
+<rect width="1200" height="332" fill="#f8f8f8"/>
+<text x="600" y="22" text-anchor="middle" font-size="14" fill="#111">cadence scheduler thread — llamacpp backend, 1.9 rps, kv_core=python</text>
+<g><title>all — 155490.5 ms (100.00%)</title><rect x="0.00" y="311.0" width="1200.00" height="16" fill="#f2ad5c" stroke="#fff" stroke-width="0.4"/>
+<text x="3.00" y="323.0" fill="#111">all</text>
+</g>
+<g><title>threading.py:_bootstrap — 155490.5 ms (100.00%)</title><rect x="0.00" y="294.0" width="1200.00" height="16" fill="#f2b15c" stroke="#fff" stroke-width="0.4"/>
+<text x="3.00" y="306.0" fill="#111">threading.py:_bootstrap</text>
+</g>
+<g><title>threading.py:_bootstrap_inner — 155490.5 ms (100.00%)</title><rect x="0.00" y="277.0" width="1200.00" height="16" fill="#f2aa5c" stroke="#fff" stroke-width="0.4"/>
+<text x="3.00" y="289.0" fill="#111">threading.py:_bootstrap_inner</text>
+</g>
+<g><title>threading.py:run — 155490.5 ms (100.00%)</title><rect x="0.00" y="260.0" width="1200.00" height="16" fill="#f29b5c" stroke="#fff" stroke-width="0.4"/>
+<text x="3.00" y="272.0" fill="#111">threading.py:run</text>
+</g>
+<g><title>base.py:_run — 155490.5 ms (100.00%)</title><rect x="0.00" y="243.0" width="1200.00" height="16" fill="#f2905c" stroke="#fff" stroke-width="0.4"/>
+<text x="3.00" y="255.0" fill="#111">base.py:_run</text>
+</g>
+<g><title>continuous.py:loop — 155490.5 ms (100.00%)</title><rect x="0.00" y="226.0" width="1200.00" height="16" fill="#f2bf5c" stroke="#fff" stroke-width="0.4"/>
+<text x="3.00" y="238.0" fill="#111">continuous.py:loop</text>
+</g>
+<g><title>base.py:_idle_wait — 2014.6 ms (1.30%)</title><rect x="0.00" y="209.0" width="15.55" height="16" fill="#f2c25c" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>threading.py:wait — 2014.6 ms (1.30%)</title><rect x="0.00" y="192.0" width="15.55" height="16" fill="#f2af5c" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>threading.py:wait — 2014.6 ms (1.30%)</title><rect x="0.00" y="175.0" width="15.55" height="16" fill="#f2af5c" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>continuous.py:_do_decode — 137004.7 ms (88.11%)</title><rect x="15.55" y="209.0" width="1057.34" height="16" fill="#f29d5c" stroke="#fff" stroke-width="0.4"/>
+<text x="18.55" y="221.0" fill="#111">continuous.py:_do_decode</text>
+</g>
+<g><title>base.py:_emit — 6439.7 ms (4.14%)</title><rect x="15.55" y="192.0" width="49.70" height="16" fill="#f2925c" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>base.py:push — 6439.7 ms (4.14%)</title><rect x="15.55" y="175.0" width="49.70" height="16" fill="#f2c75c" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>llamacpp.py:detokenize — 6439.7 ms (4.14%)</title><rect x="15.55" y="158.0" width="49.70" height="16" fill="#6eb771" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>_internals.py:detokenize — 6439.7 ms (4.14%)</title><rect x="15.55" y="141.0" width="49.70" height="16" fill="#f28e5c" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>llamacpp.py:decode_step — 130529.9 ms (83.95%)</title><rect x="65.52" y="192.0" width="1007.37" height="16" fill="#6eb77b" stroke="#fff" stroke-width="0.4"/>
+<text x="68.52" y="204.0" fill="#111">llamacpp.py:decode_step</text>
+</g>
+<g><title>llamacpp.py:_decode — 45463.4 ms (29.24%)</title><rect x="65.52" y="175.0" width="350.86" height="16" fill="#6eb77c" stroke="#fff" stroke-width="0.4"/>
+<text x="68.52" y="187.0" fill="#111">llamacpp.py:_decode</text>
+</g>
+<g><title>llamacpp.py:_logits — 80199.9 ms (51.58%)</title><rect x="416.38" y="175.0" width="618.94" height="16" fill="#6eb77b" stroke="#fff" stroke-width="0.4"/>
+<text x="419.38" y="187.0" fill="#111">llamacpp.py:_logits</text>
+</g>
+<g><title>llamacpp.py:_sample — 4866.6 ms (3.13%)</title><rect x="1035.33" y="175.0" width="37.56" height="16" fill="#6eb77d" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>fromnumeric.py:argmax — 4866.6 ms (3.13%)</title><rect x="1035.33" y="158.0" width="37.56" height="16" fill="#f2a15c" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>fromnumeric.py:_wrapfunc — 4866.6 ms (3.13%)</title><rect x="1035.33" y="141.0" width="37.56" height="16" fill="#f2c05c" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>continuous.py:_do_prefill — 16376.5 ms (10.53%)</title><rect x="1072.88" y="209.0" width="126.39" height="16" fill="#f2895c" stroke="#fff" stroke-width="0.4"/>
+<text x="1075.88" y="221.0" fill="#111">continuous.py:_do_…</text>
+</g>
+<g><title>llamacpp.py:prefill_chunk — 16376.5 ms (10.53%)</title><rect x="1072.88" y="192.0" width="126.39" height="16" fill="#6eb76f" stroke="#fff" stroke-width="0.4"/>
+<text x="1075.88" y="204.0" fill="#111">llamacpp.py:prefil…</text>
+</g>
+<g><title>llamacpp.py:_decode — 2393.3 ms (1.54%)</title><rect x="1072.88" y="175.0" width="18.47" height="16" fill="#6eb77c" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>llamacpp.py:_logits — 13889.5 ms (8.93%)</title><rect x="1091.35" y="175.0" width="107.19" height="16" fill="#6eb77b" stroke="#fff" stroke-width="0.4"/>
+<text x="1094.35" y="187.0" fill="#111">llamacpp.py:_lo…</text>
+</g>
+<g><title>llamacpp.py:_sample — 93.7 ms (0.06%)</title><rect x="1198.55" y="175.0" width="0.72" height="16" fill="#6eb77d" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>fromnumeric.py:argmax — 93.7 ms (0.06%)</title><rect x="1198.55" y="158.0" width="0.72" height="16" fill="#f2a15c" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>fromnumeric.py:_wrapfunc — 93.7 ms (0.06%)</title><rect x="1198.55" y="141.0" width="0.72" height="16" fill="#f2c05c" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>continuous.py:_schedule — 58.8 ms (0.04%)</title><rect x="1199.55" y="209.0" width="0.45" height="16" fill="#f2ad5c" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>continuous.py:_admit — 58.8 ms (0.04%)</title><rect x="1199.55" y="192.0" width="0.45" height="16" fill="#f2a05c" stroke="#fff" stroke-width="0.4"/>
+</g>
+<g><title>llamacpp.py:copy_prefix — 58.8 ms (0.04%)</title><rect x="1199.55" y="175.0" width="0.45" height="16" fill="#6eb76e" stroke="#fff" stroke-width="0.4"/>
+</g>
+</svg>

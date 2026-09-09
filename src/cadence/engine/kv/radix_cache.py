@@ -18,6 +18,11 @@ Three rules keep it correct:
 3. **Evict leaves only, LRU by ``last_used``, bottom-up.** Evicting an
    interior node would orphan its children.
 
+``last_used`` is a logical clock -- a counter bumped on every touch -- not a
+wall clock. Ordering is all LRU needs, a counter gives it exactly, and it is
+the only version of the rule the C++ port can be differentially tested against:
+two implementations cannot be asked to agree on ``time.monotonic()``.
+
 A fourth rule is specific to running on top of llama.cpp: the *blocks* are an
 accounting model, but the physical KV lives in a llama.cpp sequence. Every node
 therefore names an ``owner_seq`` -- a sequence id whose KV holds exactly the
@@ -29,7 +34,6 @@ the last node naming them is evicted.
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 
 from cadence.engine.kv.block_manager import BlockManager
@@ -37,10 +41,19 @@ from cadence.engine.kv.block_manager import BlockManager
 BlockKey = tuple[int, ...]
 
 
-def _common_prefix_len(a: list[int], b: list[int]) -> int:
-    n = min(len(a), len(b))
+def _common_prefix_len(edge: list[int], toks: list[int], start: int, stop: int) -> int:
+    """How far ``edge`` agrees with ``toks[start:stop]``, without materialising
+    that slice.
+
+    The slice is the obvious way to write this and it is quadratic: matching
+    walks one node per block, and each visit would copy the whole remaining
+    prompt. On a 512-token prompt that is thirty-odd copies of up to 512
+    integers to compare a few hundred. Indexing in place costs nothing and
+    removes the only super-linear term in a lookup.
+    """
+    n = min(len(edge), max(0, stop - start))
     i = 0
-    while i < n and a[i] == b[i]:
+    while i < n and edge[i] == toks[start + i]:
         i += 1
     return i
 
@@ -51,11 +64,12 @@ class Node:
     """The edge label: a run of token ids."""
     blocks: list[int]
     """KV blocks covering exactly these tokens (aligned to block boundaries)."""
-    children: dict[int, Node] = field(default_factory=dict)
+    children: dict[BlockKey, Node] = field(default_factory=dict)
     parent: Node | None = None
     refs: int = 0
     """Sequences currently using this node. Never evict while > 0."""
-    last_used: float = 0.0
+    last_used: int = 0
+    """Logical clock, not wall time. See the module docstring."""
     owner_seq: int = -1
     depth_tokens: int = 0
     """Path length from the root through this node, in tokens."""
@@ -83,6 +97,7 @@ class RadixCache:
         self.block_size = block_size
         self.root = Node(tokens=[], blocks=[], depth_tokens=0)
         self.root.refs = 1  # the root is never evictable
+        self._clock = 0
         self._seq_refs: dict[int, int] = {}
         self.on_seq_released = lambda seq_id: None
         # token-level counters; a request-level hit rate would hide the fact
@@ -90,6 +105,10 @@ class RadixCache:
         self.query_tokens = 0
         self.hit_tokens = 0
         self.n_evictions = 0
+
+    def _tick(self) -> int:
+        self._clock += 1
+        return self._clock
 
     def _key(self, tokens: list[int], i: int = 0) -> BlockKey:
         """Children are keyed by the whole first *block* of their edge, not by
@@ -128,7 +147,7 @@ class RadixCache:
             child = node.children.get(self._key(token_ids, i))
             if child is None:
                 break
-            n = _common_prefix_len(child.tokens, token_ids[i:limit])
+            n = _common_prefix_len(child.tokens, token_ids, i, limit)
             if n < len(child.tokens):
                 # Partial match inside the edge. Split the node at the last
                 # block boundary the two sequences agree on, so the shared head
@@ -137,12 +156,12 @@ class RadixCache:
                 if k > 0 and child.owner_seq >= 0:
                     self._split(child, k)
                     head = node.children[self._key(token_ids, i)]
-                    head.last_used = time.monotonic()
+                    head.last_used = self._tick()
                     best = head
                 break
             i += n
             node = child
-            node.last_used = time.monotonic()
+            node.last_used = self._tick()
             if node.owner_seq >= 0:
                 best = node
 
@@ -179,14 +198,14 @@ class RadixCache:
         cur = node
         while cur is not None:
             cur.refs += 1
-            cur.last_used = time.monotonic()
+            cur.last_used = self._tick()
             cur = cur.parent
 
     def release(self, node: Node | None) -> None:
         cur = node
         while cur is not None:
             cur.refs -= 1
-            cur.last_used = time.monotonic()
+            cur.last_used = self._tick()
             cur = cur.parent
 
     # --- insertion --------------------------------------------------------
@@ -214,7 +233,7 @@ class RadixCache:
                     tokens=toks[i:],
                     blocks=blks[i // self.block_size :],
                     parent=node,
-                    last_used=time.monotonic(),
+                    last_used=self._tick(),
                     depth_tokens=n,
                 )
                 self.blocks.share(new.blocks)
@@ -222,7 +241,7 @@ class RadixCache:
                 new.owner_seq = owner_seq
                 node.children[self._key(toks, i)] = new
                 return new
-            m = _common_prefix_len(child.tokens, toks[i:])
+            m = _common_prefix_len(child.tokens, toks, i, n)
             if m < len(child.tokens):
                 k = m - (m % self.block_size)
                 if k == 0:
@@ -236,7 +255,7 @@ class RadixCache:
                 m = k
             i += m
             node = child
-            node.last_used = time.monotonic()
+            node.last_used = self._tick()
 
         # Exact path already present. Give it an owner if it has none, so a
         # later request can actually reuse it.
@@ -356,6 +375,35 @@ class RadixCache:
     @property
     def hit_rate(self) -> float:
         return self.hit_tokens / self.query_tokens if self.query_tokens else 0.0
+
+    def n_owned_sequences(self) -> int:
+        """Backend sequence ids the cache is holding.
+
+        Every id is in exactly one of three places -- a running request, a
+        cached prefix, or the free pool -- and a leak shows up as this number
+        growing without bound. Public so that the invariant can be asserted
+        against either implementation of the cache.
+        """
+        return len(self._seq_refs)
+
+    def paths(self) -> list[list[int]]:
+        """Every root-to-node token path in the tree.
+
+        Exists so that a test can assert on the tree's *shape* without
+        reaching into the node objects, which is what lets the same test run
+        against the C++ core -- whose nodes are not Python objects. The
+        invariant worth asserting with it is that every path spells a prefix
+        of a sequence somebody actually inserted.
+        """
+        out: list[list[int]] = []
+        stack: list[tuple[Node, list[int]]] = [(self.root, [])]
+        while stack:
+            node, acc = stack.pop()
+            for child in node.children.values():
+                path = acc + child.tokens
+                out.append(path)
+                stack.append((child, path))
+        return out
 
     def n_nodes(self) -> int:
         n, stack = 0, [self.root]

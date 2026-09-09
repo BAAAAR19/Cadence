@@ -85,7 +85,7 @@ class StaticBatchScheduler(BaseScheduler):
                 t0 = time.perf_counter()
                 toks = self.runner.decode_step([lv.seq for lv in still])
                 self.metrics.step_latency.observe(time.perf_counter() - t0)
-                nxt = []
+                nxt: list[Live] = []
                 for lv, tok in zip(still, toks, strict=True):
                     (nxt if self._emit(lv, tok) else done).append(lv)
                 still = nxt

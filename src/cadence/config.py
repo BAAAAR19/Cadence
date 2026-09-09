@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     seed: int = 1234
     verbose_backend: bool = False
 
+    # The mock backend's cost model, exposed so a measurement can turn it
+    # down. ``bench/profile_core.py`` runs the same scheduler with the
+    # modelled forward pass set to ~0 to see what the bookkeeping costs on its
+    # own; the defaults are the realistic ones the correctness tests use.
+    mock_step_overhead_s: float = 0.004
+    mock_decode_s_per_seq: float = 0.0015
+    mock_prefill_s_per_token: float = 0.00012
+
     # Sampling. Greedy by default: two sequences decoded together must be
     # comparable with the same two decoded apart (see tests/test_backend_equivalence).
     temperature: float = 0.0
@@ -77,6 +85,16 @@ class Settings(BaseSettings):
     enable_prefix_cache: bool = True
     enable_paged_kv: bool = True
     preemption_policy: Literal["recompute"] = "recompute"
+    kv_core: Literal["auto", "python", "cpp"] = "auto"
+    """Which implementation of the block allocator and the radix cache to run.
+
+    ``auto`` prefers the C++17 extension and falls back to the Python
+    reference if it was not built. The explicit values exist so that a
+    measurement can pin one -- an A/B whose two arms differ in more than the
+    thing being compared is not an A/B -- and so that the Python reference
+    stays reachable as an executable specification rather than becoming dead
+    code the moment the extension lands.
+    """
 
     # --- SLO / admission (Week 4 makes admission interesting) ------------
     slo_s: float = 2.0
@@ -87,6 +105,10 @@ class Settings(BaseSettings):
     metrics_enabled: bool = True
     tracing_enabled: bool = False
     otlp_endpoint: str = "http://localhost:4317"
+    profile_out: str | None = None
+    """Path for a folded-stack profile of the scheduler thread. Unset means no
+    profiler thread is started at all; see ``cadence.obs.profiler``."""
+    profile_hz: int = 200
 
     # --- server ---------------------------------------------------------
     host: str = "127.0.0.1"
