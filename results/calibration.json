@@ -1,0 +1,56 @@
+{
+  "n_ctx": 16384,
+  "kv_cells": 16384,
+  "prompt_tokens": {
+    "p50": 541,
+    "p95": 639,
+    "max": 648
+  },
+  "requested_output_tokens": {
+    "p50": 100,
+    "mean": 135.84375,
+    "p95": 380,
+    "max": 512
+  },
+  "decode": {
+    "1": {
+      "step_ms": 12.275950000002922,
+      "tokens_per_s_aggregate": 81.46009066506151,
+      "tokens_per_s_per_seq": 81.46009066506151
+    },
+    "2": {
+      "step_ms": 15.281494800001383,
+      "tokens_per_s_aggregate": 130.87724899790686,
+      "tokens_per_s_per_seq": 65.43862449895343
+    },
+    "4": {
+      "step_ms": 19.481519799956004,
+      "tokens_per_s_aggregate": 205.32279006328005,
+      "tokens_per_s_per_seq": 51.33069751582001
+    },
+    "8": {
+      "step_ms": 38.878102075068455,
+      "tokens_per_s_aggregate": 205.77136158943824,
+      "tokens_per_s_per_seq": 25.72142019867978
+    },
+    "16": {
+      "step_ms": 50.851832300031674,
+      "tokens_per_s_aggregate": 314.6395965753634,
+      "tokens_per_s_per_seq": 19.66497478596021
+    }
+  },
+  "prefill": {
+    "tokens": 542,
+    "seconds": 0.33030795800004853,
+    "tokens_per_s": 1640.8929511771569
+  },
+  "implied_capacity_rps": {
+    "fifo": 0.5005207816594529,
+    "batched_best_case": 1.3122465243998265,
+    "best_batch_size": 16
+  },
+  "implied_unloaded_e2e_s": {
+    "p50": 1.5579029580003407,
+    "p95": 4.995168958001159
+  }
+}

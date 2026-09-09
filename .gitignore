@@ -1,0 +1,16 @@
+.venv/
+build/
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+models/*.gguf
+models/.cache/
+results/**/*.parquet.tmp
+.DS_Store
+
+# Server logs from a sweep: large, machine-specific, and reproducible from the
+# committed parquet + meta.json. The results themselves are committed.
+results/**/*.server.log

@@ -1,0 +1,634 @@
+{
+  "uid": "cadence-overview",
+  "title": "Cadence -- SLO-aware inference gateway",
+  "tags": [
+    "cadence"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "End-to-end latency (from arrival)",
+      "description": "The SLO variable. Interpolated within Prometheus buckets -- the numbers in the README come from the load generator's raw parquet.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cadence-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le, config) (rate(cadence_e2e_seconds_bucket[30s])))",
+          "legendFormat": "p50 {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, config) (rate(cadence_e2e_seconds_bucket[30s])))",
+          "legendFormat": "p95 {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, config) (rate(cadence_e2e_seconds_bucket[30s])))",
+          "legendFormat": "p99 {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Time to first token",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cadence-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le, config) (rate(cadence_ttft_seconds_bucket[30s])))",
+          "legendFormat": "p50 {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, config) (rate(cadence_ttft_seconds_bucket[30s])))",
+          "legendFormat": "p95 {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, config) (rate(cadence_ttft_seconds_bucket[30s])))",
+          "legendFormat": "p99 {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Inter-token latency",
+      "description": "p99 ITL is where unchunked prefill shows up: a long prompt prefilled in one shot stalls every decoding sequence.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cadence-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 7
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le, config) (rate(cadence_itl_seconds_bucket[30s])))",
+          "legendFormat": "p50 {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, config) (rate(cadence_itl_seconds_bucket[30s])))",
+          "legendFormat": "p95 {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, config) (rate(cadence_itl_seconds_bucket[30s])))",
+          "legendFormat": "p99 {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Engine step duration",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cadence-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 7
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le, config) (rate(cadence_step_seconds_bucket[30s])))",
+          "legendFormat": "p50 {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, config) (rate(cadence_step_seconds_bucket[30s])))",
+          "legendFormat": "p99 {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue depth and running batch size",
+      "description": "Under continuous batching the running batch should be continuously changing size, not stepping between waves.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cadence-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "targets": [
+        {
+          "expr": "cadence_queue_depth",
+          "legendFormat": "waiting {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "A"
+        },
+        {
+          "expr": "cadence_batch_size",
+          "legendFormat": "running {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Throughput and goodput",
+      "description": "Under overload these diverge, and goodput is the one that matters.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cadence-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "targets": [
+        {
+          "expr": "sum by (config) (rate(cadence_requests_total{state=\"done\"}[30s]))",
+          "legendFormat": "throughput {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (config) (rate(cadence_slo_met_total[30s]))",
+          "legendFormat": "goodput {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "B"
+        },
+        {
+          "expr": "sum by (config) (rate(cadence_shed_total[30s]))",
+          "legendFormat": "shed {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "KV blocks",
+      "description": "The memory ceiling on batch size.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cadence-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "targets": [
+        {
+          "expr": "cadence_kv_blocks_free",
+          "legendFormat": "free {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "A"
+        },
+        {
+          "expr": "cadence_kv_blocks_total",
+          "legendFormat": "total {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "KV fragmentation ratio",
+      "description": "allocated tokens / (allocated blocks x block size). Paged allocation should hold this above ~0.9.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cadence-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 21
+      },
+      "targets": [
+        {
+          "expr": "cadence_kv_fragmentation_ratio",
+          "legendFormat": "{{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Prefix cache token-level hit rate",
+      "description": "Token-level, not request-level: partial hits are the normal case.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cadence-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "targets": [
+        {
+          "expr": "sum by (config) (rate(cadence_prefix_cache_hit_tokens_total[1m])) / sum by (config) (rate(cadence_prefix_cache_query_tokens_total[1m]))",
+          "legendFormat": "{{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Preemptions and copy-on-write",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cadence-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "targets": [
+        {
+          "expr": "sum by (config) (rate(cadence_preemptions_total[1m]))",
+          "legendFormat": "preemptions {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (config) (rate(cadence_kv_copy_on_write_total[1m]))",
+          "legendFormat": "CoW {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Token throughput",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cadence-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      },
+      "targets": [
+        {
+          "expr": "sum by (config, kind) (rate(cadence_tokens_total[30s]))",
+          "legendFormat": "{{kind}} {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 30,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    }
+  ]
+}

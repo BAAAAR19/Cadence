@@ -1,0 +1,68 @@
+[build-system]
+requires = ["scikit-build-core>=0.9", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "cadence"
+version = "0.1.0"
+description = "An LLM inference gateway with SLO-aware scheduling"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+    "pydantic-settings>=2.4",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "scikit-learn>=1.5",
+    "matplotlib>=3.9",
+    "prometheus-client>=0.20",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-instrumentation-fastapi>=0.48b0",
+    "opentelemetry-exporter-otlp>=1.27",
+    "llama-cpp-python>=0.3.35",
+]
+
+[project.scripts]
+cadence-serve = "cadence.api.app:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "hypothesis>=6.112",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pybind11>=2.12",
+    "scikit-build-core>=0.9",
+    "openai>=3.10.0",
+    "tabulate>=0.10.0",
+]
+
+[tool.scikit-build]
+cmake.version = ">=3.26"
+cmake.source-dir = "."
+# Week 3 ships the C++ extension. Until then the pure-Python package builds
+# without a compiler in the loop.
+cmake.args = []
+wheel.packages = ["src/cadence"]
+build-dir = "build/{wheel_tag}"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "bench", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501", "B008"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
