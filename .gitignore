@@ -14,3 +14,5 @@ results/**/*.parquet.tmp
 # Server logs from a sweep: large, machine-specific, and reproducible from the
 # committed parquet + meta.json. The results themselves are committed.
 results/**/*.server.log
+results/w2_verify/
+results/w2_rerun_fifo_2.6/

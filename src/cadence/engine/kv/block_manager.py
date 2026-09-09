@@ -120,6 +120,8 @@ class BlockManager:
         old = block_table[block_idx]
         if self.refcount[old] == 1:
             return old
+        # Raises OutOfBlocks if there is nowhere to copy to, consuming nothing.
+        # Callers gate on can_append, which accounts for this.
         new = self.alloc(1)[0]
         self.n_copy_on_write += 1
         self.release([old])
@@ -131,12 +133,20 @@ class BlockManager:
         return len(block_table) * self.block_size
 
     def can_append(self, block_table: list[int], n_filled: int, n: int = 1) -> bool:
-        """Can ``n`` more tokens be written without a new allocation, or is
-        there a free block to take?"""
+        """Can ``n`` more tokens be written, given the free list as it stands?
+
+        Spare room in the last block is not sufficient on its own: if that
+        block is shared, writing into it first requires privatising it, and
+        that copy needs a free block like any other allocation. Ignoring the
+        copy makes this optimistic, which shows up as the scheduler deciding
+        one step late that it needed to preempt.
+        """
         spare = self.slots_in(block_table) - n_filled
+        idx = n_filled // self.block_size
+        cow = 1 if (idx < len(block_table) and self.is_shared(block_table[idx])) else 0
         if spare >= n:
-            return True
-        return _ceil_div(n - spare, self.block_size) <= len(self.free)
+            return cow <= len(self.free)
+        return _ceil_div(n - spare, self.block_size) + cow <= len(self.free)
 
     def append_slot(self, block_table: list[int], n_filled: int) -> int | None:
         """Make room for one more token. Returns a newly allocated block id if

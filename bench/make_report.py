@@ -43,18 +43,27 @@ def ladder_table(s: pd.DataFrame, df: pd.DataFrame, slo: float) -> str:
         sat = float(peak.rate_rps)
         over = g[g.rate_rps >= 2 * sat]
         over_row = over.iloc[0] if len(over) else g.iloc[-1]
-        hit = df[(df.config == cfg)].get("prefix_hit_rate_server")
+        # A rung with no prefix cache reports a hit rate of zero, which is a
+        # different statement from "there was nothing to report".
+        hit = df[df.config == cfg].get("prefix_hit_rate_server")
+        has_cache = "cache" in cfg
         rows.append(
             {
                 "Config": LABELS[cfg],
                 f"Peak goodput (rps, SLO {slo:g}s)": f"{peak.goodput_rps:.2f}",
-                "at offered": f"{sat:.1f}",
+                "at offered (rps)": f"{sat:.1f}",
                 "p50 TTFT (s)": f"{peak.ttft_p50:.2f}",
                 "p99 TTFT (s)": f"{peak.ttft_p99:.2f}",
-                f"p99 E2E at {over_row.rate_rps:.1f} rps": f"{over_row.e2e_p99:.1f}",
+                # The column header is fixed so every rung lands in one column;
+                # the offered load it was taken at varies by rung and is
+                # therefore carried in the cell.
+                "p99 E2E past saturation (s)": (
+                    f"{over_row.e2e_p99:.0f} @ {over_row.rate_rps:.1f} rps"
+                ),
+                "p99 ITL (s)": f"{peak.itl_p99:.3f}",
                 "Prefix hit rate": (
                     f"{float(hit.dropna().iloc[-1]):.0%}"
-                    if hit is not None and hit.notna().any()
+                    if has_cache and hit is not None and hit.notna().any()
                     else "n/a"
                 ),
             }

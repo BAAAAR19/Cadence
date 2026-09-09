@@ -37,6 +37,14 @@ jobs:
       - name: Dashboard/metric consistency
         run: uv run python deploy/grafana/make_dashboard.py && git diff --exit-code deploy/grafana/dashboards
 
+      - name: README numbers match the committed results
+        # Every figure in the writeup is generated from the committed parquet.
+        # This fails if someone edited a number by hand or forgot to regenerate.
+        run: |
+          uv run bench/make_report.py results/w2_ladder --slo 4.0 --outdir docs
+          uv run bench/embed_tables.py --check
+          git diff --exit-code docs README.md
+
       - name: Tests
         run: uv run pytest -q -m "not slow" --durations=10
 

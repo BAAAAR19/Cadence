@@ -29,6 +29,24 @@ COLOURS = {
     "continuous+cache": "#2E7D5B",
     "continuous+cache+admission": "#6B4E9B",
 }
+# The Week-2 knob experiments share the figure machinery with the ladder.
+KNOB_COLOURS = {
+    "chunk-128": "#2E7D5B",
+    "chunk-256": "#3E7CB1",
+    "chunked-prefill-512": "#D68A2E",
+    "unchunked-prefill": "#B3452F",
+    "prefill-first": "#3E7CB1",
+    "decode-first": "#D68A2E",
+}
+KNOB_LABELS = {
+    "chunk-128": "prefill budget 128 tokens",
+    "chunk-256": "prefill budget 256 tokens",
+    "chunked-prefill-512": "prefill budget 512 tokens",
+    "unchunked-prefill": "unchunked (budget 2048 > prompt)",
+    "prefill-first": "prefill before decode",
+    "decode-first": "decode before prefill",
+}
+
 LABELS = {
     "fifo": "1  FIFO, no batching",
     "static": "2  static batching (8)",
@@ -36,6 +54,10 @@ LABELS = {
     "continuous+cache": "4  + paged KV + prefix cache",
     "continuous+cache+admission": "5  + conformal admission",
 }
+
+
+COLOURS.update(KNOB_COLOURS)
+LABELS.update(KNOB_LABELS)
 
 
 def _style(ax, xlabel, ylabel, title, subtitle=""):
@@ -75,22 +97,41 @@ def latency_vs_load(s: pd.DataFrame, out: Path, slo: float) -> None:
 
 def goodput_vs_load(s: pd.DataFrame, out: Path, slo: float) -> None:
     """Throughput and goodput point in opposite directions under overload, and
-    goodput is the one that matters."""
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4.6), sharex=True)
+    goodput is the one that matters.
+
+    Three panels, because the first one is a trap worth showing rather than
+    hiding. With no admission control and a client that waits up to 300 s,
+    *completed* requests per second simply tracks the offered load: every rung
+    eventually finishes everything, some of them minutes late. Read on its own
+    it says all four configurations are identical -- and output tokens per
+    second says the same thing, for the same reason. What the scheduler decides
+    is *when*, not *whether*, so the middle panel asks how much of that
+    completed work was still useful and the right panel multiplies the two.
+    """
+    fig, axes = plt.subplots(1, 3, figsize=(15.5, 4.6), sharex=True)
     for cfg in _configs(s):
         g = s[s.config == cfg].sort_values("rate_rps")
-        axes[0].plot(g.rate_rps, g.throughput_rps, marker="o", ms=4.5, lw=1.8,
-                     color=COLOURS.get(cfg), label=LABELS.get(cfg, cfg))
-        axes[1].plot(g.rate_rps, g.goodput_rps, marker="o", ms=4.5, lw=1.8,
-                     color=COLOURS.get(cfg), label=LABELS.get(cfg, cfg))
+        kw = dict(marker="o", ms=4.5, lw=1.8, color=COLOURS.get(cfg),
+                  label=LABELS.get(cfg, cfg))
+        axes[0].plot(g.rate_rps, g.throughput_rps, **kw)
+        axes[1].plot(g.rate_rps, g.slo_attainment, **kw)
+        axes[2].plot(g.rate_rps, g.goodput_rps, **kw)
+
     lim = s.rate_rps.max()
-    for ax, title, sub in (
-        (axes[0], "Throughput", "completed requests per second"),
-        (axes[1], f"Goodput (SLO {slo:g}s)", "requests per second completing within the SLO"),
-    ):
-        ax.plot([0, lim], [0, lim], color="#bbb", ls=":", lw=1.1)
-        _style(ax, "offered load (requests/s)", "requests/s", title, sub)
-    axes[1].legend(fontsize=8, frameon=False, loc="upper left")
+    axes[0].plot([0, lim], [0, lim], color="#bbb", ls=":", lw=1.1)
+    axes[2].plot([0, lim], [0, lim], color="#bbb", ls=":", lw=1.1)
+    _style(axes[0], "offered load (requests/s)", "requests/s", "Throughput",
+           "completed requests -- tracks offered load for every rung,\n"
+           "because nothing is shed and the client waits")
+    axes[1].set_ylim(0, 1.03)
+    _style(axes[1], "offered load (requests/s)", "fraction within SLO",
+           f"SLO attainment ({slo:g}s)",
+           "of everything that completed, how much was still useful")
+    _style(axes[2], "offered load (requests/s)", "requests/s",
+           f"Goodput (SLO {slo:g}s)",
+           "requests completing within the SLO -- the only number\n"
+           "that means anything under overload")
+    axes[2].legend(fontsize=8, frameon=False, loc="upper left")
     fig.tight_layout()
     fig.savefig(out, dpi=160)
     plt.close(fig)

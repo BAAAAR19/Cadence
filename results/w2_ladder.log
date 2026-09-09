@@ -1,0 +1,53 @@
+[1/24] fifo                       rate=0.3   seed=0 n=67   ok=57   p50=  1.72 p99=   5.18 slo=0.89 hit=0.00 (192s, 3m total)
+[2/24] static                     rate=0.3   seed=0 n=67   ok=57   p50=  1.96 p99=   5.35 slo=0.88 hit=0.00 (192s, 6m total)
+[3/24] continuous                 rate=0.3   seed=0 n=67   ok=57   p50=  1.24 p99=   4.87 slo=0.93 hit=0.00 (191s, 10m total)
+[4/24] continuous+cache           rate=0.3   seed=0 n=67   ok=57   p50=  0.97 p99=   4.57 slo=0.95 hit=0.56 (192s, 13m total)
+[5/24] static                     rate=0.6   seed=0 n=128  ok=105  p50=  2.24 p99=   7.32 slo=0.72 hit=0.00 (184s, 16m total)
+[6/24] continuous                 rate=0.6   seed=0 n=128  ok=105  p50=  1.33 p99=   6.23 slo=0.86 hit=0.00 (184s, 19m total)
+[7/24] continuous+cache           rate=0.6   seed=0 n=128  ok=105  p50=  0.84 p99=   4.38 slo=0.95 hit=0.64 (184s, 22m total)
+[8/24] fifo                       rate=0.6   seed=0 n=128  ok=105  p50=  4.10 p99=  10.14 slo=0.50 hit=0.00 (184s, 25m total)
+[9/24] continuous                 rate=1.0   seed=0 n=214  ok=182  p50=  2.95 p99=  15.58 slo=0.63 hit=0.00 (184s, 28m total)
+[10/24] continuous+cache           rate=1.0   seed=0 n=214  ok=182  p50=  1.22 p99=   8.31 slo=0.89 hit=0.62 (184s, 31m total)
+[11/24] fifo                       rate=1.0   seed=0 n=214  ok=182  p50= 33.59 p99=  50.67 slo=0.00 hit=0.00 (233s, 35m total)
+[12/24] static                     rate=1.0   seed=0 n=214  ok=182  p50=  4.89 p99=  11.94 slo=0.35 hit=0.00 (185s, 38m total)
+[13/24] continuous+cache           rate=1.4   seed=0 n=292  ok=247  p50=  2.02 p99=  14.41 slo=0.71 hit=0.61 (182s, 41m total)
+[14/24] fifo                       rate=1.4   seed=0 n=292  ok=247  p50= 78.82 p99= 154.64 slo=0.00 hit=0.00 (335s, 47m total)
+[15/24] static                     rate=1.4   seed=0 n=292  ok=247  p50= 24.60 p99=  50.99 slo=0.00 hit=0.00 (227s, 51m total)
+[16/24] continuous                 rate=1.4   seed=0 n=292  ok=247  p50= 14.84 p99=  48.62 slo=0.02 hit=0.00 (207s, 54m total)
+[17/24] fifo                       rate=1.9   seed=0 n=378  ok=311  p50=135.41 p99= 241.05 slo=0.00 hit=0.00 (426s, 61m total)
+[18/24] static                     rate=1.9   seed=0 n=378  ok=311  p50= 68.50 p99= 114.00 slo=0.00 hit=0.00 (292s, 66m total)
+[19/24] continuous                 rate=1.9   seed=0 n=378  ok=311  p50= 47.61 p99=  98.39 slo=0.00 hit=0.00 (261s, 71m total)
+[20/24] continuous+cache           rate=1.9   seed=0 n=378  ok=311  p50=  3.51 p99=  27.21 slo=0.56 hit=0.62 (182s, 74m total)
+[21/24] static                     rate=2.6   seed=0 n=504  ok=412  p50=131.96 p99= 196.67 slo=0.00 hit=0.00 (380s, 80m total)
+[22/24] continuous                 rate=2.6   seed=0 n=504  ok=412  p50=104.84 p99= 172.65 slo=0.00 hit=0.00 (347s, 86m total)
+[23/24] continuous+cache           rate=2.6   seed=0 n=504  ok=412  p50=  5.46 p99=  32.59 slo=0.37 hit=0.65 (186s, 89m total)
+[24/24] fifo                       rate=2.6   seed=0 n=504  ok=337  p50=194.96 p99= 301.34 slo=0.00 hit=0.00 (480s, 97m total)
+Traceback (most recent call last):
+  File "/Users/macbookm1/Cv/cadence/bench/run_ladder.py", line 134, in <module>
+    main()
+  File "/Users/macbookm1/Cv/cadence/bench/run_ladder.py", line 126, in main
+    pd.concat(frames[rung], ignore_index=True).to_parquet(
+  File "/Users/macbookm1/Cv/cadence/.venv/lib/python3.11/site-packages/pandas/core/frame.py", line 3135, in to_parquet
+    return to_parquet(
+           ^^^^^^^^^^^
+  File "/Users/macbookm1/Cv/cadence/.venv/lib/python3.11/site-packages/pandas/io/parquet.py", line 490, in to_parquet
+    impl.write(
+  File "/Users/macbookm1/Cv/cadence/.venv/lib/python3.11/site-packages/pandas/io/parquet.py", line 191, in write
+    table = self.api.Table.from_pandas(df, **from_pandas_kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "pyarrow/table.pxi", line 4769, in pyarrow.lib.Table.from_pandas
+  File "/Users/macbookm1/Cv/cadence/.venv/lib/python3.11/site-packages/pyarrow/pandas_compat.py", line 656, in dataframe_to_arrays
+    arrays = [convert_column(c, f)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/macbookm1/Cv/cadence/.venv/lib/python3.11/site-packages/pyarrow/pandas_compat.py", line 656, in <listcomp>
+    arrays = [convert_column(c, f)
+              ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/macbookm1/Cv/cadence/.venv/lib/python3.11/site-packages/pyarrow/pandas_compat.py", line 644, in convert_column
+    raise e
+  File "/Users/macbookm1/Cv/cadence/.venv/lib/python3.11/site-packages/pyarrow/pandas_compat.py", line 638, in convert_column
+    result = pa.array(col, type=type_, from_pandas=True, safe=safe)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "pyarrow/array.pxi", line 408, in pyarrow.lib.array
+  File "pyarrow/array.pxi", line 91, in pyarrow.lib._ndarray_to_array
+  File "pyarrow/error.pxi", line 92, in pyarrow.lib.check_status
+pyarrow.lib.ArrowInvalid: ("Could not convert 'ReadTimeout' with type str: tried to convert to int64", 'Conversion failed for column status with type object')

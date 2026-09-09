@@ -122,10 +122,16 @@ def main(argv=None) -> None:
                     flush=True,
                 )
                 # Write incrementally: a two-hour sweep should not lose
-                # everything because the last run tripped over something.
-                pd.concat(frames[rung], ignore_index=True).to_parquet(
-                    outdir / f"{rung.replace('+', '_')}.parquet"
-                )
+                # everything because the last run tripped over something. And
+                # a failed write must not take the remaining rungs with it --
+                # report it and keep going, so at worst one rung is short a
+                # rate rather than the sweep being short two hours.
+                try:
+                    pd.concat(frames[rung], ignore_index=True).to_parquet(
+                        outdir / f"{rung.replace('+', '_')}.parquet"
+                    )
+                except Exception as exc:
+                    print(f"  !! could not write {rung}: {exc}", flush=True)
 
     print(f"\nwrote {len(frames)} rung files to {outdir} in {(time.time() - t_start) / 60:.0f}m")
 

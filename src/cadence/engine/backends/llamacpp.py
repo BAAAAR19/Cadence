@@ -201,6 +201,11 @@ class LlamaCppRunner:
         of one enormous forward pass.
         """
         with self._lock:
+            # Never build a batch larger than the one that was allocated.
+            # Settings validates this at startup; this is the second line of
+            # defence, because the failure mode is a memory overrun rather
+            # than an exception.
+            budget = min(budget, self.cfg.n_batch)
             plan: list[tuple[SeqState, int]] = []
             spent = 0
             for s in seqs:

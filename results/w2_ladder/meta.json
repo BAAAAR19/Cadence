@@ -1,0 +1,129 @@
+{
+  "argv": [
+    "bench/run_ladder.py",
+    "--configs",
+    "fifo,static,continuous,continuous+cache",
+    "--rates",
+    "0.3,0.6,1.0,1.4,1.9,2.6",
+    "--duration",
+    "180",
+    "--warmup",
+    "25",
+    "--cooldown",
+    "5",
+    "--slo",
+    "4.0",
+    "--seeds",
+    "0",
+    "--port",
+    "8200",
+    "--outdir",
+    "results/w2_ladder"
+  ],
+  "started": "2026-09-09T03:35:29+00:00",
+  "rungs": {
+    "fifo": {
+      "CADENCE_BACKEND": "llamacpp",
+      "CADENCE_N_CTX": "16384",
+      "CADENCE_N_BATCH": "512",
+      "CADENCE_N_PARALLEL": "64",
+      "CADENCE_MAX_BATCH": "24",
+      "CADENCE_MAX_PREFILL_TOKENS": "512",
+      "CADENCE_BLOCK_SIZE": "16",
+      "CADENCE_TEMPERATURE": "0.0",
+      "CADENCE_MAX_TOKENS_CAP": "512",
+      "CADENCE_METRICS_ENABLED": "true",
+      "CADENCE_TRACING_ENABLED": "false",
+      "CADENCE_SCHEDULER": "fifo",
+      "CADENCE_ENABLE_PAGED_KV": "false",
+      "CADENCE_ENABLE_PREFIX_CACHE": "false",
+      "CADENCE_ADMISSION": "none",
+      "CADENCE_CONFIG_NAME": "fifo"
+    },
+    "static": {
+      "CADENCE_BACKEND": "llamacpp",
+      "CADENCE_N_CTX": "16384",
+      "CADENCE_N_BATCH": "512",
+      "CADENCE_N_PARALLEL": "64",
+      "CADENCE_MAX_BATCH": "24",
+      "CADENCE_MAX_PREFILL_TOKENS": "512",
+      "CADENCE_BLOCK_SIZE": "16",
+      "CADENCE_TEMPERATURE": "0.0",
+      "CADENCE_MAX_TOKENS_CAP": "512",
+      "CADENCE_METRICS_ENABLED": "true",
+      "CADENCE_TRACING_ENABLED": "false",
+      "CADENCE_SCHEDULER": "static",
+      "CADENCE_STATIC_BATCH_SIZE": "8",
+      "CADENCE_ENABLE_PAGED_KV": "false",
+      "CADENCE_ENABLE_PREFIX_CACHE": "false",
+      "CADENCE_ADMISSION": "none",
+      "CADENCE_CONFIG_NAME": "static"
+    },
+    "continuous": {
+      "CADENCE_BACKEND": "llamacpp",
+      "CADENCE_N_CTX": "16384",
+      "CADENCE_N_BATCH": "512",
+      "CADENCE_N_PARALLEL": "64",
+      "CADENCE_MAX_BATCH": "24",
+      "CADENCE_MAX_PREFILL_TOKENS": "512",
+      "CADENCE_BLOCK_SIZE": "16",
+      "CADENCE_TEMPERATURE": "0.0",
+      "CADENCE_MAX_TOKENS_CAP": "512",
+      "CADENCE_METRICS_ENABLED": "true",
+      "CADENCE_TRACING_ENABLED": "false",
+      "CADENCE_SCHEDULER": "continuous",
+      "CADENCE_ENABLE_PAGED_KV": "false",
+      "CADENCE_ENABLE_PREFIX_CACHE": "false",
+      "CADENCE_ADMISSION": "none",
+      "CADENCE_CONFIG_NAME": "continuous"
+    },
+    "continuous+cache": {
+      "CADENCE_BACKEND": "llamacpp",
+      "CADENCE_N_CTX": "16384",
+      "CADENCE_N_BATCH": "512",
+      "CADENCE_N_PARALLEL": "64",
+      "CADENCE_MAX_BATCH": "24",
+      "CADENCE_MAX_PREFILL_TOKENS": "512",
+      "CADENCE_BLOCK_SIZE": "16",
+      "CADENCE_TEMPERATURE": "0.0",
+      "CADENCE_MAX_TOKENS_CAP": "512",
+      "CADENCE_METRICS_ENABLED": "true",
+      "CADENCE_TRACING_ENABLED": "false",
+      "CADENCE_SCHEDULER": "continuous",
+      "CADENCE_ENABLE_PAGED_KV": "true",
+      "CADENCE_ENABLE_PREFIX_CACHE": "true",
+      "CADENCE_ADMISSION": "none",
+      "CADENCE_CONFIG_NAME": "continuous+cache"
+    }
+  },
+  "rates": [
+    0.3,
+    0.6,
+    1.0,
+    1.4,
+    1.9,
+    2.6
+  ],
+  "seeds": [
+    0
+  ],
+  "duration_s": 180.0,
+  "warmup_s": 25.0,
+  "cooldown_s": 5.0,
+  "slo_s": 4.0,
+  "workload": "mixed",
+  "reruns": [
+    {
+      "rung": "fifo",
+      "rates": [
+        2.6
+      ],
+      "seeds": [
+        0
+      ],
+      "reason": "original run completed but its parquet write failed on a mixed-type status column (int HTTP codes and 'ReadTimeout' strings); repeated 12h later with byte-identical engine source (src.hash 3ca988279705) and reproduced the lost run: p50 196.9s vs 194.9s, p99 301.5s vs 301.3s",
+      "merged_at": "2026-09-09T16:01:05+00:00",
+      "source": "results/w2_rerun_fifo_2.6/fifo.parquet"
+    }
+  ]
+}

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SchedulerName = Literal["fifo", "static", "continuous"]
@@ -91,6 +91,22 @@ class Settings(BaseSettings):
     # --- server ---------------------------------------------------------
     host: str = "127.0.0.1"
     port: int = 8000
+
+    @model_validator(mode="after")
+    def _prefill_budget_fits_the_batch(self) -> Settings:
+        """``max_prefill_tokens`` is the number of prompt tokens one engine
+        step may push through ``llama_decode``, and llama.cpp's batch is
+        allocated for ``n_batch`` tokens. Asking for more than that used to
+        write past the end of it -- a silent corruption that showed up as every
+        request failing, with no indication of why. Raising unchunked prefill
+        is legitimate; it just has to raise ``n_batch`` with it.
+        """
+        if self.max_prefill_tokens > self.n_batch:
+            raise ValueError(
+                f"max_prefill_tokens ({self.max_prefill_tokens}) exceeds n_batch "
+                f"({self.n_batch}); raise n_batch to at least the prefill budget"
+            )
+        return self
 
     @property
     def n_kv_blocks(self) -> int:

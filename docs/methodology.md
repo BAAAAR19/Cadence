@@ -1,0 +1,5 @@
+- Runs: 24 (4 configurations x 6 offered loads x 1 seed)
+- Requests issued: 6,332; analysed in steady state: 5,256
+- Per run: 180s of arrivals, first 25s and last 5s excluded from every quantile
+- Inter-arrival KS test against Exp(lambda), one per distinct arrival realisation: 0/6 pass at alpha=0.05 (median p = 0.005). See `results/loadgen_validation.json` and the note below.
+- Client-side scheduling slip (actual send minus intended arrival): p99 2.8 ms, max 87 ms

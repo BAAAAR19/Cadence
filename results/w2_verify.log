@@ -1,0 +1,3 @@
+[1/1] continuous+cache           rate=1.0   seed=0 n=214  ok=182  p50=  1.32 p99=   8.47 slo=0.87 hit=0.63 (184s, 3m total)
+
+wrote 1 rung files to results/w2_verify in 3m

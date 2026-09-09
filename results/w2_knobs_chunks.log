@@ -1,0 +1,10 @@
+
+=== chunk-128: CADENCE_N_BATCH=2048 CADENCE_MAX_PREFILL_TOKENS=128
+[chunk-128] rates=[1.4] seeds=[0] duration=180.0s
+  rate=1.4   seed=0 n=292   ok=247   shed=0    p50_e2e=2.40 p99_e2e=17.80 KS_p=0.00 (184s)
+wrote results/w2_knobs/chunk-128.parquet (292 rows)
+
+=== chunk-256: CADENCE_N_BATCH=2048 CADENCE_MAX_PREFILL_TOKENS=256
+[chunk-256] rates=[1.4] seeds=[0] duration=180.0s
+  rate=1.4   seed=0 n=292   ok=247   shed=0    p50_e2e=3.39 p99_e2e=26.99 KS_p=0.00 (186s)
+wrote results/w2_knobs/chunk-256.parquet (292 rows)

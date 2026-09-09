@@ -98,6 +98,19 @@ def test_can_append_reports_the_memory_ceiling():
     assert not bm.can_append(t, n_filled=8), "no blocks left to grow into"
 
 
+def test_can_append_accounts_for_the_copy_a_shared_block_will_need():
+    """Spare room inside a shared block is not usable room: the write has to
+    privatise it first, and that copy needs a free block."""
+    bm = BlockManager(2, block_size=4)
+    t = bm.alloc(1)
+    bm.share(t)          # a peer holds the same partially-filled block
+    bm.alloc(1)          # ...and the pool is now empty
+    assert bm.free_blocks() == 0
+    assert not bm.can_append(t, n_filled=2), (
+        "reported room inside a shared block with nothing to copy it into"
+    )
+
+
 def test_contiguous_allocator_reserves_more_than_paged():
     paged = BlockManager(1024, 16)
     contig = ContiguousBlockManager(1024, 16, reserve_tokens=512)
@@ -143,7 +156,14 @@ def test_refcounts_and_free_list_stay_consistent(ops):
         elif op == "fork" and held:
             t = held[k % len(held)]
             if t:
-                bm.fork_for_write(t, k % len(t))
+                idx = k % len(t)
+                before = list(bm.free), list(bm.refcount)
+                try:
+                    bm.fork_for_write(t, idx)
+                except OutOfBlocks:
+                    # A copy-on-write with nowhere to copy to must consume
+                    # nothing -- the same strong guarantee alloc gives.
+                    assert (bm.free, bm.refcount) == before
 
         free = set(bm.free)
         assert len(free) == len(bm.free), "a block appears twice on the free list"

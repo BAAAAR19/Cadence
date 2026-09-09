@@ -1,0 +1,35 @@
+
+=== chunked-prefill-512: CADENCE_N_BATCH=2048 CADENCE_MAX_PREFILL_TOKENS=512
+[chunked-prefill-512] rates=[1.4] seeds=[0] duration=180.0s
+  rate=1.4   seed=0 n=292   ok=247   shed=0    p50_e2e=3.38 p99_e2e=27.12 KS_p=0.00 (186s)
+wrote results/w2_knobs/chunked-prefill-512.parquet (292 rows)
+
+=== unchunked-prefill: CADENCE_N_BATCH=2048 CADENCE_MAX_PREFILL_TOKENS=2048
+[unchunked-prefill] rates=[1.4] seeds=[0] duration=180.0s
+  rate=1.4   seed=0 n=292   ok=247   shed=0    p50_e2e=3.25 p99_e2e=18.54 KS_p=0.00 (182s)
+wrote results/w2_knobs/unchunked-prefill.parquet (292 rows)
+
+=== prefill-first: CADENCE_PREFILL_PRIORITY=true
+[prefill-first] rates=[1.4] seeds=[0] duration=180.0s
+  rate=1.4   seed=0 n=292   ok=247   shed=0    p50_e2e=2.03 p99_e2e=14.48 KS_p=0.00 (182s)
+wrote results/w2_knobs/prefill-first.parquet (292 rows)
+
+=== decode-first: CADENCE_PREFILL_PRIORITY=false
+[decode-first] rates=[1.4] seeds=[0] duration=180.0s
+  rate=1.4   seed=0 n=292   ok=247   shed=0    p50_e2e=2.03 p99_e2e=14.39 KS_p=0.00 (182s)
+wrote results/w2_knobs/decode-first.parquet (292 rows)
+
+=== replicate-1: 
+[replicate-1] rates=[1.4] seeds=[0] duration=180.0s
+  rate=1.4   seed=0 n=292   ok=247   shed=0    p50_e2e=2.03 p99_e2e=14.42 KS_p=0.00 (182s)
+wrote results/w2_knobs/replicate-1.parquet (292 rows)
+
+=== replicate-2: 
+[replicate-2] rates=[1.4] seeds=[0] duration=180.0s
+  rate=1.4   seed=0 n=292   ok=247   shed=0    p50_e2e=2.00 p99_e2e=14.40 KS_p=0.00 (182s)
+wrote results/w2_knobs/replicate-2.parquet (292 rows)
+
+=== replicate-3: 
+[replicate-3] rates=[1.4] seeds=[0] duration=180.0s
+  rate=1.4   seed=0 n=292   ok=247   shed=0    p50_e2e=2.04 p99_e2e=14.45 KS_p=0.00 (182s)
+wrote results/w2_knobs/replicate-3.parquet (292 rows)

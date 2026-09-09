@@ -68,7 +68,13 @@ async def one_request(client, url, payload, t_intended, results, slo_s, timeout_
         "ttft": None,
         "e2e": None,
         "n_tokens": 0,
+        # `status` is the HTTP status and nothing else. A transport failure --
+        # a read timeout under overload, most often -- goes in `error`.
+        # Putting both in one column produced a frame that pandas typed as
+        # object and parquet refused to write, which lost a completed run at
+        # the very end of a two-hour sweep.
         "status": None,
+        "error": None,
         "itl": [],
         "shared_prompt": meta.get("shared"),
         "requested_tokens": meta.get("requested_tokens"),
@@ -100,7 +106,7 @@ async def one_request(client, url, payload, t_intended, results, slo_s, timeout_
                 last = now
                 rec["n_tokens"] += 1
     except Exception as e:
-        rec["status"] = type(e).__name__
+        rec["error"] = type(e).__name__
     rec["e2e"] = time.perf_counter() - t_intended  # <-- intended, not send
     rec["ok"] = rec["status"] == 200 and rec["n_tokens"] > 0
     rec["met_slo"] = bool(rec["ok"] and rec["e2e"] <= slo_s)
@@ -134,6 +140,10 @@ async def run(cfg: RunConfig, workload) -> pd.DataFrame:
         await asyncio.gather(*tasks)
 
     df = pd.DataFrame(results)
+    # Nullable integer, coercing anything unexpected to NA rather than letting
+    # a stray object-typed column fail the write at the end of a long sweep.
+    df["status"] = pd.to_numeric(df["status"], errors="coerce").astype("Int64")
+    df["error"] = df["error"].astype("string")
     df["t_rel"] = df["t_intended"] - t0
     df["rate_rps"] = cfg.rate_rps
     df["config"] = cfg.config_name
