@@ -1897,12 +1897,13 @@ statistic this project reports honestly — seed 0's realisation sits at the
 2.5th percentile of the null distribution, which `bench/validate_loadgen.py`
 establishes over 200 seeds.
 
-**The gate has been shown to fail.** `prove-the-gate-can-fail` runs on demand
-and on `master`: it sets `max_batch=1`, turning continuous batching into a
-queue, and asserts that the check returns exactly 1. A gate nobody has ever
-seen go red is a gate nobody knows is wired up. Measured locally, a repeat of
-the clean run reproduces to within 5% and the regressed scheduler fails all
-six gated metrics:
+**The gate has been shown to fail.** The
+[`prove-the-gate-can-fail` job](https://github.com/BAAAAR19/Cadence/actions/runs/34507686309/job/102974186460)
+runs on demand and on `master`: it sets `max_batch=1`, turning continuous
+batching into a queue, and asserts that the check returns exactly 1. A gate
+nobody has ever seen go red is a gate nobody knows is wired up. Measured
+locally, a repeat of the clean run reproduces to within 5% and the regressed
+scheduler fails all six gated metrics:
 
 | rate | metric | baseline | regressed | |
 |---:|:--|---:|---:|---:|
@@ -1913,14 +1914,12 @@ six gated metrics:
 | 8 | p99 TTFT | 0.344 | 43.263 | +12470% |
 | 8 | goodput | 6.138 | 0.000 | −100% |
 
-One honest caveat, marked in the baseline file itself: the committed
-thresholds were measured on the author's laptop, not on a runner. The mock
-backend's *sleeps* are hardware-independent, which is what makes the gate
-portable, but the Python around them — the scheduler's bookkeeping, the KV
-accounting, JSON, asyncio — is not. A `refresh the baseline` workflow measures
-the identical sweep on `ubuntu-latest` and uploads the result to be committed;
-until that has run, the thresholds are a threshold on the difference between
-two computers.
+The committed thresholds are runner-native. The
+[`refresh the baseline` job](https://github.com/BAAAAR19/Cadence/actions/runs/34518486463/job/103009822406)
+measured the identical sweep on `ubuntu-latest` (`Linux/X64`), and the baseline
+records that run id. This removes the original cross-machine caveat: the gate
+now compares GitHub-runner measurements with a baseline measured in the same
+environment.
 
 ### Deployment
 
@@ -2379,7 +2378,7 @@ is worth being explicit about which:
 |---|---|
 | One five-rung sweep in a single session | Rungs 1–4 are one interleaved block. Rung 5's usable arms are a *second* block, run hours later, because the first block's rung 5 turned out to be the arm that refuses everything. Rung 4 was run again alongside them as an anchor, so the cost of that is [measured rather than promised](#what-two-blocks-cost). |
 | Three seeds per rung | Done. Every cell in the Week 5 tables is the mean of three arrival realisations with the range beside it, and the three seeds' realisations were recorded before the sweep rather than chosen after it. |
-| CI load-test regression gate | Done, and demonstrated failing. One caveat is marked in the baseline file itself: the committed thresholds were measured on a laptop rather than on a runner, and the `refresh the baseline` workflow exists to replace them. |
+| CI load-test regression gate | Done, demonstrated failing, and calibrated on `ubuntu-latest` (`Linux/X64`) by the linked refresh workflow run. |
 | An end-to-end win from the C++ core | There isn't one, and the arithmetic says there could not be at this model size. The claim the port supports is correctness and a written-down interface, not speed. |
 | Live deployment URL | The image, `fly.toml`, the readiness/drain/cap machinery and the deploy runbook are committed, and the drain is asserted by a test on every CI run. The container itself is still unverified end to end — there is no Docker on this machine — so the build is reviewed rather than run, and no number anywhere in this README comes from it. |
 | Admission control on the deployed instance | Off, deliberately. The committed predictor was calibrated on Metal and is not a valid bound on a CPU container; the gateway now says so at start-up instead of silently shedding everything. The four-command recalibration procedure is in `deploy/README.md`. |
