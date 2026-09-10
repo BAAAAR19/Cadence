@@ -1,0 +1,352 @@
+{
+  "alpha": 0.01,
+  "fitted_on": {
+    "source": "results/ci_traces/meta.json",
+    "backend": "mock",
+    "env": {
+      "CADENCE_BACKEND": "mock",
+      "CADENCE_N_CTX": "16384",
+      "CADENCE_MAX_BATCH": "24",
+      "CADENCE_BLOCK_SIZE": "16",
+      "CADENCE_MAX_TOKENS_CAP": "512"
+    },
+    "platform": "Darwin-arm64",
+    "python": "3.11.16"
+  },
+  "base_alpha": 0.2,
+  "score": "ratio",
+  "selection": [
+    {
+      "base_alpha": 0.5,
+      "score": "absolute",
+      "q": 2.095333716982637,
+      "median_bound_s": 3.2471546937908307,
+      "admit_frac": 0.0,
+      "goodput_frac": 0.0
+    },
+    {
+      "base_alpha": 0.5,
+      "score": "ratio",
+      "q": 0.4000145286752441,
+      "median_bound_s": 2.210186317520702,
+      "admit_frac": 0.4500978473581213,
+      "goodput_frac": 0.4500978473581213
+    },
+    {
+      "base_alpha": 0.2,
+      "score": "absolute",
+      "q": 1.607179788297473,
+      "median_bound_s": 2.9422324334268817,
+      "admit_frac": 0.07632093933463796,
+      "goodput_frac": 0.07632093933463796
+    },
+    {
+      "base_alpha": 0.2,
+      "score": "ratio",
+      "q": 0.2895606727338864,
+      "median_bound_s": 2.11925786484182,
+      "admit_frac": 0.45792563600782776,
+      "goodput_frac": 0.45792563600782776
+    },
+    {
+      "base_alpha": 0.1,
+      "score": "absolute",
+      "q": 1.4049723946791959,
+      "median_bound_s": 2.9196343589202347,
+      "admit_frac": 0.15264187866927592,
+      "goodput_frac": 0.15264187866927592
+    },
+    {
+      "base_alpha": 0.1,
+      "score": "ratio",
+      "q": 0.2696416032138713,
+      "median_bound_s": 2.2929373890783324,
+      "admit_frac": 0.42857142857142855,
+      "goodput_frac": 0.42857142857142855
+    },
+    {
+      "base_alpha": 0.05,
+      "score": "absolute",
+      "q": 1.4955673960462672,
+      "median_bound_s": 3.1000138148511445,
+      "admit_frac": 0.07632093933463796,
+      "goodput_frac": 0.07632093933463796
+    },
+    {
+      "base_alpha": 0.05,
+      "score": "ratio",
+      "q": 0.2401191177579034,
+      "median_bound_s": 2.311294707473523,
+      "admit_frac": 0.41487279843444225,
+      "goodput_frac": 0.41487279843444225
+    },
+    {
+      "base_alpha": 0.01,
+      "score": "absolute",
+      "q": 1.3678058630036132,
+      "median_bound_s": 3.8473491946340137,
+      "admit_frac": 0.0,
+      "goodput_frac": 0.0
+    },
+    {
+      "base_alpha": 0.01,
+      "score": "ratio",
+      "q": 0.22336136395042527,
+      "median_bound_s": 3.350376628351411,
+      "admit_frac": 0.0,
+      "goodput_frac": 0.0
+    }
+  ],
+  "scores": [
+    {
+      "score": "absolute",
+      "n": 1089,
+      "coverage": 0.9641873278236914,
+      "coverage_ci_lo": 0.9514180849367394,
+      "coverage_ci_hi": 0.9736931114159616,
+      "q_s": 1.3720099869416194,
+      "mean_bound_s": 3.1724677704138546,
+      "median_bound_s": 2.7371519403360187,
+      "pinball_hi": 0.2152040440511413,
+      "mae_hi_s": 0.4939559075013597,
+      "admit_frac": 0.22589531680440772,
+      "slo_attainment_if_admitted": 1.0,
+      "slo_attainment_overall": 0.6914600550964187
+    },
+    {
+      "score": "ratio",
+      "n": 1089,
+      "coverage": 0.9669421487603306,
+      "coverage_ci_lo": 0.9545741806135932,
+      "coverage_ci_hi": 0.9760272899014384,
+      "q_s": 0.2787931197814195,
+      "mean_bound_s": 2.7008999421975695,
+      "median_bound_s": 2.125615308420578,
+      "pinball_hi": 0.2152040440511413,
+      "mae_hi_s": 0.4939559075013597,
+      "admit_frac": 0.4738292011019284,
+      "slo_attainment_if_admitted": 0.998062015503876,
+      "slo_attainment_overall": 0.6914600550964187
+    },
+    {
+      "score": "scaled",
+      "n": 1089,
+      "coverage": 0.9522497704315886,
+      "coverage_ci_lo": 0.9379177198741293,
+      "coverage_ci_hi": 0.9634022884418059,
+      "q_s": 2.347759046824735,
+      "mean_bound_s": 3.473299337662952,
+      "median_bound_s": 2.552290463272519,
+      "pinball_hi": 0.2152040440511413,
+      "mae_hi_s": 0.4939559075013597,
+      "admit_frac": 0.379247015610652,
+      "slo_attainment_if_admitted": 1.0,
+      "slo_attainment_overall": 0.6914600550964187
+    }
+  ],
+  "slo_s": 2.0,
+  "split": "round",
+  "split_sensitivity": {
+    "n": 830,
+    "coverage": 0.9915662650602409,
+    "coverage_ci_lo": 0.9826942725247303,
+    "coverage_ci_hi": 0.995908857853989,
+    "q_s": 0.31624733898887875,
+    "mean_bound_s": 3.030520196941594,
+    "median_bound_s": 2.423085774418145,
+    "pinball_hi": 0.19410930967085682,
+    "mae_hi_s": 0.4978702281421129,
+    "admit_frac": 0.44096385542168676,
+    "slo_attainment_if_admitted": 0.9972677595628415,
+    "slo_attainment_overall": 0.672289156626506,
+    "split": "time"
+  },
+  "src_hash": "cd2b66e44247",
+  "traces": [
+    "results/ci_traces"
+  ],
+  "n_rows_raw": 4137,
+  "n_shed_rows": 0,
+  "n_censored": 0,
+  "n_train": 2042,
+  "n_calib": 1006,
+  "n_test": 1089,
+  "conformal_level": 0.9910536779324056,
+  "rates": [
+    2.0,
+    3.0,
+    4.0,
+    5.0,
+    6.0,
+    8.0
+  ],
+  "models": {
+    "cqr": {
+      "n": 1089,
+      "coverage": 0.9669421487603306,
+      "coverage_ci_lo": 0.9545741806135932,
+      "coverage_ci_hi": 0.9760272899014384,
+      "q_s": 0.2787931197814195,
+      "mean_bound_s": 2.7008999421975695,
+      "median_bound_s": 2.125615308420578,
+      "pinball_hi": 0.2152040440511413,
+      "mae_hi_s": 0.4939559075013597,
+      "admit_frac": 0.4738292011019284,
+      "slo_attainment_if_admitted": 0.998062015503876,
+      "slo_attainment_overall": 0.6914600550964187
+    },
+    "constant": {
+      "n": 1089,
+      "coverage": 0.9733700642791552,
+      "coverage_ci_lo": 0.9620165409318097,
+      "coverage_ci_hi": 0.9813955692953266,
+      "q_s": 0.04491350307233244,
+      "mean_bound_s": 7.453123458006305,
+      "median_bound_s": 7.453123458006305,
+      "pinball_hi": 0.07235253230300549,
+      "mae_hi_s": 5.436844806342903,
+      "admit_frac": 0.0,
+      "slo_attainment_if_admitted": NaN,
+      "slo_attainment_overall": 0.6914600550964187
+    },
+    "throughput": {
+      "n": 1089,
+      "coverage": 0.9981634527089073,
+      "coverage_ci_lo": 0.9933283592147637,
+      "coverage_ci_hi": 0.9994962184733478,
+      "q_s": 0.07133431470363127,
+      "mean_bound_s": 12.320419152869732,
+      "median_bound_s": 9.92865013347481,
+      "pinball_hi": 0.048848743087918534,
+      "mae_hi_s": 9.668074468793879,
+      "admit_frac": 0.16437098255280075,
+      "slo_attainment_if_admitted": 1.0,
+      "slo_attainment_overall": 0.6914600550964187
+    }
+  },
+  "importances": {
+    "log_max_tokens": 0.16335404157987513,
+    "ewma_step_latency_s": 0.14633056254602642,
+    "max_tokens": 0.14312492274617644,
+    "ewma_tokens_per_s": 0.1390198002934517,
+    "sum_remaining_tokens": 0.1368429467664382,
+    "running_batch_size": 0.12335723173456703,
+    "kv_blocks_free_frac": 0.05477065784082304,
+    "n_new_prefill_tokens": 0.038871883553502774,
+    "queue_depth": 0.03194564965275949,
+    "n_prompt_tokens": 0.017511948109313644,
+    "n_cached_prefix_tokens": 0.004347029076015843,
+    "has_shared_system_prompt": 0.0005233261010502402,
+    "n_messages": 0.0
+  },
+  "y_quantiles": {
+    "0.5": 1.0292738749994896,
+    "0.9": 3.992207666803735,
+    "0.99": 8.822361028034312,
+    "1.0": 11.543159791996004
+  },
+  "coverage": [
+    {
+      "alpha": 0.2,
+      "nominal": 0.8,
+      "empirical": 0.650137741046832,
+      "ci_lo": 0.6213283477125678,
+      "ci_hi": 0.6778915941344482,
+      "q_s": -0.005198006518618903,
+      "mean_bound_s": 1.785938753356343,
+      "admit_frac": 0.6528925619834711,
+      "n_calib": 1006,
+      "level": 0.8011928429423459,
+      "n_test": 1089
+    },
+    {
+      "alpha": 0.1,
+      "nominal": 0.9,
+      "empirical": 0.7823691460055097,
+      "ci_lo": 0.7568915171369122,
+      "ci_hi": 0.8058615845019712,
+      "q_s": 0.0850596927353029,
+      "mean_bound_s": 2.049088186416436,
+      "admit_frac": 0.6097337006427915,
+      "n_calib": 1006,
+      "level": 0.9015904572564613,
+      "n_test": 1089
+    },
+    {
+      "alpha": 0.05,
+      "nominal": 0.95,
+      "empirical": 0.8457300275482094,
+      "ci_lo": 0.8230644602362889,
+      "ci_hi": 0.8659649471361976,
+      "q_s": 0.14064681680276273,
+      "mean_bound_s": 2.2233774737054923,
+      "admit_frac": 0.5693296602387512,
+      "n_calib": 1006,
+      "level": 0.9512922465208747,
+      "n_test": 1089
+    },
+    {
+      "alpha": 0.01,
+      "nominal": 0.99,
+      "empirical": 0.9669421487603306,
+      "ci_lo": 0.9545741806135932,
+      "ci_hi": 0.9760272899014384,
+      "q_s": 0.2787931197814195,
+      "mean_bound_s": 2.7008999421975695,
+      "admit_frac": 0.4738292011019284,
+      "n_calib": 1006,
+      "level": 0.9910536779324056,
+      "n_test": 1089
+    }
+  ],
+  "safety": [
+    {
+      "safety": 0.6,
+      "admit_frac": 0.7144168962350781,
+      "slo_attainment_if_admitted": 0.897172236503856,
+      "goodput_frac": 0.6409550045913682
+    },
+    {
+      "safety": 0.7,
+      "admit_frac": 0.6382001836547291,
+      "slo_attainment_if_admitted": 0.9510791366906475,
+      "goodput_frac": 0.6069788797061524
+    },
+    {
+      "safety": 0.8,
+      "admit_frac": 0.5785123966942148,
+      "slo_attainment_if_admitted": 0.9809523809523809,
+      "goodput_frac": 0.5674931129476584
+    },
+    {
+      "safety": 0.9,
+      "admit_frac": 0.5160697887970616,
+      "slo_attainment_if_admitted": 0.998220640569395,
+      "goodput_frac": 0.5151515151515151
+    },
+    {
+      "safety": 1.0,
+      "admit_frac": 0.4738292011019284,
+      "slo_attainment_if_admitted": 0.998062015503876,
+      "goodput_frac": 0.472910927456382
+    },
+    {
+      "safety": 1.1,
+      "admit_frac": 0.4361799816345271,
+      "slo_attainment_if_admitted": 0.9978947368421053,
+      "goodput_frac": 0.43526170798898073
+    },
+    {
+      "safety": 1.25,
+      "admit_frac": 0.38016528925619836,
+      "slo_attainment_if_admitted": 1.0,
+      "goodput_frac": 0.38016528925619836
+    },
+    {
+      "safety": 1.5,
+      "admit_frac": 0.29660238751147844,
+      "slo_attainment_if_admitted": 1.0,
+      "goodput_frac": 0.29660238751147844
+    }
+  ]
+}

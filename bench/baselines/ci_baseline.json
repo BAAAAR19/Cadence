@@ -1,0 +1,43 @@
+{
+  "_comment": "Baseline for the CI load gate. Deterministic mock backend, not a benchmark: see bench/check_regression.py. Regenerate with --update-baseline, and say in the commit message what changed and why the new numbers are the right ones.",
+  "created": "2026-09-10T06:54:28+00:00",
+  "note": "PROVISIONAL: measured on the author's M-series laptop, not on a CI runner. The mock backend's sleeps are hardware-independent but the Python around them is not, so this should be replaced by the output of the `refresh the baseline` workflow, which measures the identical sweep on ubuntu-latest.",
+  "config": "continuous+cache+admission",
+  "slo_s": 2.0,
+  "ks_p": {
+    "4": 0.01845740483021249,
+    "8": 0.004969180782244642
+  },
+  "sched_delay_p99": {
+    "4": 0.0032888159729191125,
+    "8": 0.002985707247280523
+  },
+  "rates": {
+    "4": {
+      "e2e_p50": 0.3821627072029514,
+      "e2e_p99": 1.0086121113512494,
+      "ttft_p50": 0.035311672145326156,
+      "ttft_p99": 0.2306300480056963,
+      "itl_p99": 0.08587230249919228,
+      "goodput_rps": 4.279286538124631,
+      "throughput_rps": 4.279286538124631,
+      "slo_attainment": 0.8553459119496856,
+      "shed_rate": 0.14465408805031446,
+      "n": 159.0,
+      "n_ok": 136.0
+    },
+    "8": {
+      "e2e_p50": 0.5106071439804509,
+      "e2e_p99": 1.422782418143761,
+      "ttft_p50": 0.049542478955117986,
+      "ttft_p99": 0.344176346360473,
+      "itl_p99": 0.0952837782580173,
+      "goodput_rps": 6.138346584092596,
+      "throughput_rps": 6.138346584092596,
+      "slo_attainment": 0.7358490566037735,
+      "shed_rate": 0.2641509433962264,
+      "n": 265.0,
+      "n_ok": 195.0
+    }
+  }
+}

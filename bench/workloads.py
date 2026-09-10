@@ -305,7 +305,53 @@ class UniformWorkload:
         }
 
 
-WORKLOADS = {"mixed": MixedWorkload, "uniform": UniformWorkload}
+class CIWorkload(MixedWorkload):
+    """``mixed``, shrunk to fit a CI gate. Same shape, quarter the size.
+
+    The gate runs against the mock backend, whose tokenizer is byte-level: a
+    prompt that llama.cpp sees as 540 tokens is about 2200 to the mock, which
+    at the modelled prefill cost puts saturation below 1 rps and would make a
+    45-second gate a measurement of eleven requests. Everything the gate needs
+    to observe -- batching, prefix reuse, an admission decision, a queue that
+    grows when it should -- happens at any scale, so the workload is scaled
+    down until a gate run is a gate run rather than a coffee break.
+
+    What is deliberately *not* changed is the shape: 70% of arrivals still
+    share a system prompt, so the radix cache is still on the path, and output
+    lengths are still lognormal, so the batch still contains a mix of nearly
+    finished and barely started sequences. A gate whose workload has no
+    variance would pass every scheduler equally, which is the failure mode
+    documented for ``uniform`` in the Week 2 writeup.
+
+    None of this makes it a benchmark. See bench/check_regression.py.
+    """
+
+    name = "ci"
+
+    def __init__(self, model: str = "qwen") -> None:
+        super().__init__(
+            model=model,
+            shared_fraction=0.7,
+            # exp(3.4) ~ 30 tokens median, same sigma as `mixed`, so the tail
+            # is proportionally as long.
+            length_mu=3.4,
+            length_sigma=0.8,
+            min_tokens=8,
+            max_tokens=128,
+        )
+
+    def sample(self, rng: random.Random) -> dict:
+        body = super().sample(rng)
+        sysmsg = body["messages"][0]["content"]
+        # ~600 bytes: long enough to span dozens of mock KV blocks and to make
+        # a prefix hit worth something, short enough that a request costs
+        # tens of milliseconds of modelled prefill rather than a quarter of a
+        # second.
+        body["messages"][0]["content"] = sysmsg[:600]
+        return body
+
+
+WORKLOADS = {"mixed": MixedWorkload, "uniform": UniformWorkload, "ci": CIWorkload}
 
 
 def build_workload(name: str, **kw):
