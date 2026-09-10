@@ -1,8 +1,22 @@
+<div align="center">
+
 # Cadence
 
-An LLM inference gateway with SLO-aware scheduling: continuous batching, a
-paged KV cache and a radix prefix cache in front of a small local model, built
-so that a tail-latency target can be *measured* rather than hoped for.
+### Keep useful work inside the latency budget.
+
+**An SLO-aware LLM inference gateway with continuous batching, paged KV,
+prefix reuse, and conformal admission control.**
+
+[![CI](https://github.com/BAAAAR19/Cadence/actions/workflows/ci.yml/badge.svg)](https://github.com/BAAAAR19/Cadence/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-OpenAI--compatible-009688?logo=fastapi&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-150%20passing-23a67a)
+![License](https://img.shields.io/badge/license-MIT-23a67a)
+
+[Quick start](#quick-start) · [Measured results](#results) · [Methodology](#methodology) · [Admission control](#week-4-predicting-latency-and-refusing-work-on-a-guarantee) · [Contributing](CONTRIBUTING.md)
+
+</div>
 
 > **Status: Weeks 0–4 of five are complete.** Shipped: the OpenAI-compatible
 > streaming gateway, the open-loop measurement harness, the systems core
@@ -94,7 +108,7 @@ through a lock-protected deque; tokens cross back out through
 ## Quick start
 
 ```bash
-git clone <this repo> && cd cadence
+git clone https://github.com/BAAAAR19/Cadence.git && cd Cadence
 uv sync --all-groups          # also builds the C++17 KV core; needs CMake >= 3.26
 mkdir -p models && hf download Qwen/Qwen2.5-0.5B-Instruct-GGUF \
     qwen2.5-0.5b-instruct-q4_k_m.gguf --local-dir models
@@ -1894,3 +1908,23 @@ results/
 docs/           tables and figures, all generated from the parquet above
 tests/
 ```
+
+---
+
+## Contributing and security
+
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), and
+use GitHub's private vulnerability reporting rather than a public issue for
+security-sensitive findings. Deployment assumptions and reporting guidance
+are documented in [SECURITY.md](SECURITY.md).
+
+## Citation
+
+If Cadence or its methodology supports published work, cite the repository
+using [CITATION.cff](CITATION.cff).
+
+## License
+
+Cadence is released under the [MIT License](LICENSE). Model weights are not
+distributed with the repository and remain subject to their own upstream
+licenses.
