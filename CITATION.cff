@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+title: "Cadence: an SLO-aware LLM inference gateway"
+message: "If you use this software or its methodology in your work, please cite it."
+type: software
+authors:
+  - family-names: Benamour
+    given-names: Aymen Abderrahim
+repository-code: "https://github.com/BAAAAR19/Cadence"
+abstract: >-
+  Cadence is an OpenAI-compatible LLM inference gateway combining continuous
+  batching, paged KV-cache management, radix prefix reuse, and conformal
+  admission control. Its open-loop benchmark measures goodput and tail latency
+  under overload, while a C++17 core is differentially tested against Python
+  reference implementations.
+keywords:
+  - llm-inference
+  - continuous-batching
+  - conformal-prediction
+  - admission-control
+  - systems
+license: MIT
+version: 0.1.0
+date-released: "2026-09-10"
