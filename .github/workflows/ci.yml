@@ -147,7 +147,7 @@ jobs:
         # "what did it actually measure", and re-running it does not answer
         # that -- it measures something else.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: loadgate-parquet
           path: |
@@ -195,7 +195,7 @@ jobs:
             --note "measured on ${{ runner.os }}/${{ runner.arch }} by run ${{ github.run_id }}"
           cat bench/baselines/ci_baseline.json >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ci_baseline.json
           path: bench/baselines/ci_baseline.json
