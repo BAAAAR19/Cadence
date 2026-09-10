@@ -4,14 +4,23 @@ An LLM inference gateway with SLO-aware scheduling: continuous batching, a
 paged KV cache and a radix prefix cache in front of a small local model, built
 so that a tail-latency target can be *measured* rather than hoped for.
 
-> **Status: Weeks 0–3 of five are complete.** Shipped: the OpenAI-compatible
+> **Status: Weeks 0–4 of five are complete.** Shipped: the OpenAI-compatible
 > streaming gateway, the open-loop measurement harness, the systems core
 > (iteration-level scheduling, paged KV, radix prefix cache, metrics and
-> tracing), and the C++17 port of the two KV data structures behind pybind11,
-> fuzz-tested against the Python reference. Not yet built: the conformal
-> admission controller (Week 4) that turns the p99 target into a
-> distribution-free guarantee. It is stubbed with the interface it will fill,
-> and its test skips rather than passing vacuously. See [Roadmap](#roadmap).
+> tracing), the C++17 port of the two KV data structures behind pybind11, and
+> the latency predictor with split-conformal admission control. Week 5 —
+> multiple seeds, one interleaved five-rung sweep, and a CI load gate — is
+> what remains. See [Roadmap](#roadmap).
+>
+> **Week 4's headline: at six times the load where this configuration's
+> goodput peaks, p99 end-to-end is 2.4 s against a 4 s SLO, where the same
+> system without admission control is at 203.6 s and delivers nothing inside
+> the SLO at all.** Goodput past saturation is 4.6× the unmanaged system's.
+> The bound's coverage is measured rather than asserted, at four levels, and
+> the week's two most interesting findings are failures: a feature that is
+> valid for prediction and invalid for control, and a 99% guarantee that is
+> unattainable against this SLO and says so by refusing every request. See
+> [Week 4](#week-4-predicting-latency-and-refusing-work-on-a-guarantee).
 >
 > Week 3's headline is a negative result, reported as one: the profile says
 > the two structures are **0.02% of scheduler-thread time**, the port is a
@@ -28,13 +37,14 @@ so that a tail-latency target can be *measured* rather than hoped for.
 |---|---|---|
 | **Iteration-level scheduling and prompt reuse move the collapse point 3.2× further out.** | Goodput at a 4 s SLO rises 0.37 → 1.19 rps across the four-rung ladder, on one interleaved sweep with a fixed arrival sequence. | **Measured** |
 | **The measurements are sound.** | Open-loop Poisson generator built before the scheduler, latency timestamped from *intended* arrival, arrival process KS-validated over 200 seeds, goodput reported alongside throughput — with the finding that throughput cannot distinguish the four rungs at all. | **Measured** |
-| **My scheduler holds p99 under overload.** | Not yet true, and the ladder shows why: past its own knee every rung degrades, because none of them refuses work. This is what Week 4's conformal admission controller is for, and the harness above is what will decide whether it worked. | Week 4 |
+| **My scheduler holds p99 under overload.** | True, and measured: with split-conformal admission control at a 95% per-request guarantee, p99 end-to-end stays between 1.7 s and 2.5 s across a tenfold range of offered load, ending at 2.42 s where the same system without it reaches 203.6 s. Goodput past saturation is 4.6× the unmanaged system's. The bound's coverage is validated on a held-out split at four levels and again online. The cost is stated in the same table: below saturation the controller refuses work that would have made it, and a 99% guarantee against this SLO is unattainable. | **Measured** |
 | **My C++ is load-bearing, not decorative.** | It is not load-bearing, and that is the measured answer rather than the hoped-for one: the profile puts the allocator and the radix cache at 0.02% of scheduler-thread time, the port is 2.1× on the microbenchmark and 0% end to end, and the arithmetic said so before the run did. The port earned its place on correctness instead — it surfaced a use-after-free in the Python version, and it is held to the reference by a differential fuzz over 5 000 random operation sequences. | **Measured** |
 
-The third row is the one worth reading. The project's headline claim is a Week 4
-claim; Weeks 0–3 build the baseline it has to beat and the instrument that can
-tell whether it did. The fourth row is the one most likely to be overclaimed in
-a portfolio, so it is stated the way the measurement came out.
+The third row is the one the project exists for, and it is worth reading with
+its second half attached: the guarantee is real, it is verified rather than
+assumed, and it is bought with refused work. The fourth row is the one most
+likely to be overclaimed in a portfolio, so it is stated the way the
+measurement came out.
 
 ---
 
@@ -48,9 +58,9 @@ a portfolio, so it is stated the way the measurement came out.
       | FastAPI /v1/chat/completions (SSE streaming)                    |
       +---------------------------------------------------------------+
                                   |
-                     [ 1 ] ADMISSION CONTROLLER            <- Week 4
-                     predict latency dist -> conformal upper bound
-                     admit / queue / shed (503 + Retry-After)
+                     [ 1 ] ADMISSION CONTROLLER
+                     features -> quantile regressor -> conformal bound U(x)
+                     admit if U(x) <= SLO, else 503 + Retry-After
                                   |
                                   v
                      [ 2 ] WAIT QUEUE (priority = deadline)
@@ -138,6 +148,14 @@ because that is the order the argument has to be made in:
 
 ```bash
 ./bench/run_week3.sh
+```
+
+Reproduce Week 4's — collect traces with admission off, fit and calibrate the
+predictor, then run the two-arm sweep that uses it. The order is forced by the
+method: the model may only see traces that no arm of the comparison produced.
+
+```bash
+./bench/run_week4.sh
 ```
 
 ---
@@ -345,6 +363,26 @@ it lands on the recorded point. `results/src.hash` is now produced by
 function rather than a note. The Week 2 value in that file was computed by
 hand; the runs it labels are unchanged.
 
+Week 4 changed the engine source again, and this time one of the changes is
+not a no-op for anything measured before it: `Engine.start()` now runs a
+four-token generation through the scheduler before the server accepts traffic.
+It exists because the admission controller's features include EWMAs of step
+latency and token rate, and an engine that has never stepped reports both as
+zero — a state the training set never contains. What that did to a live
+gateway is written up in
+[Week 4](#week-4-predicting-latency-and-refusing-work-on-a-guarantee); the
+consequence for the earlier numbers is that a run now starts with the model
+warm rather than paying for the first forward pass inside its first measured
+request. The benchmark harness already sent a warm-up request of its own for
+that reason, so the ladder's numbers are unaffected — but the two now overlap,
+and the harness's one is the redundant one.
+
+The rest of the Week 4 changes are additive: the `admission/` package, a
+snapshot of scheduler state that nothing else reads, and the trace writer,
+which is inert unless `CADENCE_TRACE_LOG` is set. The Week 4 sweep's own
+fingerprint is `results/src.w4.hash`, stamped into
+`results/w4_admission/meta.json` like every other run's.
+
 ### One run was repeated, and it is marked as such
 
 The `fifo` run at 2.6 rps completed but its parquet write failed: the `status`
@@ -356,6 +394,21 @@ on byte-identical engine source and reproduced the lost one closely (p50
 is recorded in `results/w2_ladder/meta.json`. The underlying bug is fixed —
 `status` is now a nullable integer and transport failures go in a separate
 `error` column — and a failed write no longer aborts the remaining rungs.
+
+### Two trace blocks were re-collected, and they are marked as such
+
+The Week 4 training set is 28 blocks of load, collected over 39 minutes. Two of
+them — round 1 at 1.6 and 2.0 rps — ran while a full `pytest` suite was
+started on the same laptop, which is exactly the background-process
+contamination the protocol below is supposed to prevent. It is visible in the
+result: p50 end-to-end at 1.6 rps came out at 2.65 s against 1.75 s for the
+same offered load in the round before it.
+
+Both blocks were re-collected on a quiet machine under their original names and
+their original arrival seeds (p50 1.28 s and 5.18 s), and the contaminated
+originals are kept in `results/w4_traces/contaminated/` rather than deleted: a
+discarded measurement nobody can see is indistinguishable from one that was
+never taken. `bench/traces.py` excludes that directory by name.
 
 ### Guarding against thermal drift
 
@@ -811,6 +864,572 @@ honours is narrower than a shared type would express ("hand the handle back to
 the cache that gave it to you"), so the protocol says `Any` and says why. mypy
 runs enforced rather than advisory from this week.
 
+
+---
+
+## Week 4: predicting latency, and refusing work on a guarantee
+
+Everything before this week is table stakes for an inference gateway. This is
+the week the project's headline claim — *holds p99 under overload* — either
+becomes true or does not, and the ladder up to rung 4 exists to make the
+difference legible.
+
+### The idea, in one paragraph
+
+A request's end-to-end latency is not knowable in advance, but it is
+*predictable with quantified uncertainty*. Fit a model that maps (prompt
+features, current system state) to conditional quantiles of latency; use
+split-conformal prediction on a held-out calibration set to turn that estimate
+into an upper bound `U(x)` that is correct at least 99% of the time, with a
+finite-sample, distribution-free guarantee that assumes nothing about the model
+being right. Admit a request only if `U(x)` fits inside its SLO budget.
+Everything else is refused immediately with a 503 and a `Retry-After`, which
+frees the capacity for the requests that can still be served in time. The p99
+target stops being a hope and becomes a property of the admission rule.
+
+### Why an interval, and not a point prediction
+
+Because the dominant source of uncertainty is not model error — it is the
+output length, which is genuinely unknown at admission time.
+
+This workload's requested output lengths are lognormal (µ=4.6, σ=0.8, capped at
+512), and a request that stops at its first EOS and one that runs to 512 tokens
+differ by more than 6 s of decode on this machine. No feature available at
+admission distinguishes them, because which one happens depends on what the
+model decides to say. A point predictor that is right on average therefore
+admits about half of the requests that will miss their deadline; the quantity
+the policy needs is the *tail*, and an interval method is the correct tool
+rather than a flourish.
+
+That is also why the base model is quantile regression rather than a
+least-squares fit with a fudge factor: two gradient-boosted quantile regressors
+(`cadence/admission/predictor.py`) give a *heteroscedastic* interval — wide when
+the system is loaded and the prompt is long, narrow when it is idle — and the
+conformal step then repairs that estimate's calibration without destroying its
+adaptivity.
+
+### What the model may see, and the leak it structurally cannot have
+
+The failure mode that would invalidate every number below is a feature that is
+only knowable after the request ran. It produces a spectacular model and a
+coverage guarantee that means nothing.
+
+The defence here is structural rather than a matter of discipline.
+`features.extract` takes exactly two arguments: an `AdmitContext`, which holds
+the prompt, the requested cap, the message count and the prefix-cache probe,
+and a `Snapshot`, which is a frozen record of engine scalars. Neither holds a
+reference to the `Request` object, and the `Request` is where every
+after-the-fact field lives — `output_ids`, `finish_reason`, the completion
+timestamp. A leaking feature could not be written without widening one of those
+two signatures, which is a diff a reviewer sees.
+`tests/test_admission.py::test_the_feature_extractor_cannot_reach_the_outcome`
+asserts exactly that, as a property of the types rather than of the values.
+
+The fourteen features are seven request-intrinsic (prompt tokens, cached prefix
+tokens, new prefill tokens, `max_tokens` and its log, message count, whether the
+prefix hit exceeds 256 tokens) and seven system-state (queue depth, running
+batch size, summed remaining output tokens, free KV fraction, EWMA step latency,
+EWMA token rate, arrival-rate estimate). `max_tokens` is the client's *cap*, not
+the realised length, so it is legitimately admission-time — and it is the single
+most informative feature, because it bounds the decode work.
+
+The system half comes from `BaseScheduler.snapshot()`, which is read from the
+API thread and written by the engine thread without a lock. That is a decision,
+not an oversight: every field is a scalar, so a reader sees an old value or a
+new one and never a torn one, and the worst case is a feature vector whose
+fields were never simultaneously true. Locking would put the admission path on
+the engine thread's critical path to buy an accuracy improvement smaller than
+the measurement noise — and admission has to be cheap, because it runs on every
+arrival, including the ones about to be refused. The prefix-cache probe is
+best-effort for the same reason and one more: it takes no reference and mutates
+nothing, so a torn read costs the predictor a little accuracy and cannot corrupt
+the cache.
+
+### Two features that the controller's own behaviour invalidated
+
+Both were found by running the thing, and neither would have shown up in an
+offline evaluation, because both are failures of the *intervention* rather than
+of the fit. They are the most interesting results of the week.
+
+**The arrival rate had to be removed.** The build guide's feature list ends
+with `arrival_rate_ewma`, and in a trace collected with admission off it is
+strongly predictive — offered load and latency move together, which is what the
+Week 2 ladder is a picture of. But offered load raises latency *by filling the
+queue*, and a controller that sheds is precisely the intervention that severs
+that path: the queue stays empty while the offered rate stays exactly where it
+was. A model fitted on observational data cannot tell those two situations
+apart.
+
+The measured consequence, from the first deployed run: with the arrival rate in
+the feature set the controller admitted **57% of a 0.6 rps load and 1% of a
+1.9 rps load — with the queue empty and the batch empty in both cases.** The
+only input that had changed was the one encoding how much work was being
+offered, and the model dutifully raised its bound for a system that was sitting
+idle. Shedding then kept it idle, and the offered rate — which counts arrivals
+rather than admissions, deliberately — kept the bound high. That run is kept in
+`results/w4_admission_confounded/` and the rule it produced is written down in
+`cadence/admission/features.py`: every remaining system-state feature is a
+*measured consequence* of congestion rather than a cause of it, so each stays
+true under the intervention because it is the mechanism the intervention works
+through.
+
+**The engine had to warm itself up.** Two of the features are EWMAs of step
+latency and token rate. An engine that has never run a step reports both as
+zero — a combination that appears nowhere in the training set, because the
+collection drops each block's first twenty seconds. The model extrapolates,
+the bound comes out two to three times too large, the request is shed, and the
+engine stays idle with the EWMAs still at zero.
+
+That is a closed loop with no exit, and it closed: a gateway that should have
+admitted most of a 1 rps load shed **89 requests out of 89**, including the load
+generator's own warm-up request, which arrives through the same door as
+everything else. `Engine.start()` now runs a four-token generation through the
+scheduler before the server accepts traffic, where admission cannot refuse it.
+The prompt is shorter than one KV block, so it donates nothing to the prefix
+cache and the first real arrival still finds a cold one.
+
+The two failures rhyme, and the moral is one sentence: **a feature that is
+valid for prediction is not automatically valid for control**, because the
+controller changes the thing being measured.
+
+### Collecting the training set, and the two ways a split can lie
+
+Traces are collected by the gateway itself, one JSONL row per request: the
+feature vector as the controller would have seen it, then what happened. Not
+reconstructed afterwards from the client's parquet — features assembled later
+would carry queue depths sampled at some other moment, and the model would be
+fitted on a system that never existed.
+
+The collection runs with admission **off**, so the rows are a sample of the
+latency distribution rather than a sample of what a previous controller allowed.
+Requests the client abandoned are marked censored and dropped: a 300 s timeout
+is a lower bound on that request's latency, and training on it teaches the model
+that the worst case is exactly the client's timeout.
+
+Then the split, which is where this experiment could most easily have lied to
+itself. The build guide's rule — split by time, never at random, because
+adjacent requests share queue conditions — is right and is not sufficient here:
+
+* A **global time split** puts whole offered loads into whole folds, because the
+  collection visits several. The three folds then sample three different
+  distributions, and exchangeability is broken by the split rather than by the
+  system.
+* A **time split within each load** fixes that and introduces a subtler failure,
+  which is the one that actually bit during development: inside an overloaded
+  block the queue grows monotonically, so the last 20% of the block holds the
+  deepest queues, and a tree model asked to predict them is extrapolating past
+  every split point it was fitted with. Measured coverage collapsed to 0.34 —
+  not because conformal prediction failed, but because calibration and test were
+  not samples of the same thing.
+
+So the unit of exchangeability here is the **run, not the request**. The
+collection makes four rounds over the rate grid, rotating the order each time,
+restarting the gateway for every (round, load) block; whole rounds become whole
+folds — two to train, one to calibrate, one to test. Requests inside a fold stay
+correlated with each other, which widens the interval on measured coverage and
+is why that interval is reported; but a calibration request and a test request
+never shared a queue, and every fold spans the whole range of load and the whole
+life of a block. The other convention is kept and reported as a sensitivity
+check, because the gap between the two numbers *is* a result.
+
+### The bound, and the `(n+1)` that makes it finite-sample
+
+The SLO is one-sided — only being too slow is a violation — so the
+nonconformity score is one-sided too. On the calibration set, score each request
+by how badly the model under-predicted it, `E_i = y_i − q_hi(x_i)`; take
+`Q`, the `ceil((n+1)(1−α))/n`-th empirical quantile of those scores; the bound
+for a new request is `U(x) = q_hi(x) + Q`. (That is the additive form. Which
+score function to use is a free choice that does not affect validity, and on
+this workload it decides everything else — see the next section but one; the
+deployed one is multiplicative.)
+
+The correction is worth being able to derive, because it is the difference
+between a finite-sample statement and an asymptotic one. Under exchangeability,
+the new request's own score is equally likely to occupy any rank among the `n+1`
+scores including itself, so `P(E_{n+1} ≤ k-th smallest of n+1) = k/(n+1)`.
+Taking `k = ceil((n+1)(1−α))` gives at least `1−α`, and that value is the `k`-th
+of the `n` scores actually observed. Dividing by `n` gives the level above.
+Using `n` instead of `n+1` throws away exactly the term that buys the guarantee.
+
+It also explains the `n ≥ 100` guard in `conformal.py` rather than leaving it as
+a superstition: the level is attainable only when `ceil((n+1)(1−α)) ≤ n`, which
+for α=0.01 first happens at n=99. Below that, no order statistic of the
+calibration set is high enough to be a 99% bound, and the honest answer is that
+this much data cannot produce one.
+
+### Two free choices that decided whether any of it worked
+
+Conformal validity holds for *any* base model and *any* nonconformity score —
+the argument is about the rank of the new score among the calibration scores,
+and never about what the score means. That is usually presented as the method's
+elegance. It is also a warning: both choices are free, so both are yours, and
+on this workload they were the difference between a controller and a machine
+that refuses everything.
+
+**The base quantile level is not the guarantee level.** The build guide fits
+the quantile pair at the same α the bound must hold at. At α=0.01 that asks a
+gradient-boosted model to estimate the 99.5th conditional percentile from
+~1 500 rows, of which about seven lie above it — and the fitted "upper
+quantile" collapses to a near-constant **18 s for every input**. Calibrated,
+that is perfectly valid (measured coverage 1.000) and completely useless: the
+bound never drops below the SLO, so nothing is ever admitted. Because validity
+does not depend on the base model, the base level is free to be chosen for
+statistical stability instead: fitted at 90% the pair is estimated from
+hundreds of rows, it tracks load and requested length instead of flattening,
+and the conformal step inflates it to whatever the guarantee requires.
+
+**The additive score is the wrong one for a quantity spanning two orders of
+magnitude.** With `E = y − q_hi`, one additive correction is set by the worst
+regime and then applied to the best: measured, Q = +24.7 s, which prices a
+request that will take 0.6 s at 33 s. Scoring in the space the model is fitted
+in — `E = log1p(y) − log1p(q_hi)`, so the correction is a multiplier — gives a
+bound that means the same thing at both ends of the range. The textbook
+locally-weighted alternative, dividing by the model's own interval width, is
+included and fails informatively: the interval collapses towards zero for the
+easiest requests, so the calibration quantile is set by the narrowest one in
+the fold and lands at Q = 2.96 interval-widths.
+
+Both were chosen on a slice of the *training* fold that the model does not see,
+because a choice made on the calibration fold would tune the rows the bound is
+then calibrated against, and a choice made on the test fold is a number that was
+optimised for rather than measured. The comparison table below is reported, not
+selected on.
+
+### Does the model earn its place?
+
+Conformal calibration gives *any* predictor the nominal coverage. That is the
+method's strength and it is also a trap for the person reporting it: coverage
+cannot distinguish a good model from a useless one. What a good model buys is a
+**tighter** bound at the same guarantee, and therefore more admitted requests
+under the same SLO — so the two baselines are fitted, calibrated and evaluated
+identically, and the comparison is on bound width and on what each would admit.
+
+<!-- PREDICTOR -->
+
+| Model                             |   Coverage (target ≥ 99%) |   Q (log-ratio) |   Mean bound U (s) |   Median bound U (s) | Would admit   | of those, met SLO   |
+|:----------------------------------|--------------------------:|----------------:|-------------------:|---------------------:|:--------------|:--------------------|
+| Conformalised quantile regression |                     0.997 |           0.73  |              21.74 |                18.23 | 3.7%          | 100.0%              |
+| Throughput arithmetic (fitted)    |                     0.995 |           0.03  |             105.96 |               105.66 | 3.3%          | 100.0%              |
+| Constant quantile (no features)   |                     0.999 |           0.106 |              45.71 |                45.71 | 0.0%          | -                   |
+
+The quantile pair is fitted at 90% and the bound is calibrated to 99%; the nonconformity score is `ratio`. Both were chosen on a held-out slice of the training fold, and neither can affect validity — only width:
+
+| Nonconformity score                            |   Coverage |      Q |   Median bound U (s) | Would admit   |
+|:-----------------------------------------------|-----------:|-------:|---------------------:|:--------------|
+| absolute — `y − q_hi`, the build guide's       |     0.9986 | 24.697 |                32.96 | 0.0%          |
+| ratio — `log1p(y) − log1p(q_hi)`  *(deployed)* |     0.9973 |  0.73  |                18.23 | 3.7%          |
+| scaled — `(y − q_hi) / (q_hi − q_lo)`          |     1      |  2.956 |                26.98 | 3.3%          |
+
+What the upper-quantile model leans on:
+
+| Feature              |   Importance |
+|:---------------------|-------------:|
+| ewma_tokens_per_s    |        0.13  |
+| queue_depth          |        0.122 |
+| ewma_step_latency_s  |        0.119 |
+| max_tokens           |        0.104 |
+| log_max_tokens       |        0.101 |
+| kv_blocks_free_frac  |        0.1   |
+| sum_remaining_tokens |        0.1   |
+| n_prompt_tokens      |        0.099 |
+
+Safety factor, read off the same held-out split:
+
+|   Safety factor | Would admit   | of those, met SLO   | Offline goodput (admitted ∧ in SLO)   |
+|----------------:|:--------------|:--------------------|:--------------------------------------|
+|            0.6  | 11.4%         | 97.6%               | 11.1%                                 |
+|            0.7  | 9.1%          | 98.5%               | 8.9%                                  |
+|            0.8  | 6.7%          | 98.0%               | 6.6%                                  |
+|            0.9  | 5.4%          | 100.0%              | 5.4%                                  |
+|            1    | 3.7%          | 100.0%              | 3.7%                                  |
+|            1.1  | 2.2%          | 100.0%              | 2.2%                                  |
+|            1.25 | 1.2%          | 100.0%              | 1.2%                                  |
+|            1.5  | 0.3%          | 100.0%              | 0.3%                                  |
+
+<!-- /PREDICTOR -->
+
+All three cover — that is the guarantee doing its job, and it is why the
+coverage column is not the interesting one. The interesting one is the width:
+the learned model's mean bound is **21.7 s against the constant quantile's
+45.7 s and the throughput arithmetic's 106 s**, on the same held-out requests
+at the same 99% level. Half the bound is twice the admitted load at a fixed
+SLO, which is the only currency this comparison is denominated in.
+
+The throughput baseline is the one that matters, because it is what anyone
+would write without a model, and it is *fitted* here rather than guessed —
+prefill tokens, requested tokens and queued tokens, with three rates from least
+squares on the same training split. It loses by 5× on bound width, and the
+reason is visible in the feature importances: no single column dominates, and
+the two the linear form does not have — the measured step latency and token
+rate — carry more of the model than the requested output length does.
+
+(There is deliberately no pinball-loss column. The learned model's quantile
+pair is fitted at 90% and the baselines' at 99.5%, for the reason in the next
+paragraph but one, so a proper scoring rule evaluated at one level would be
+comparing three estimates of three different quantities. Bound width at equal
+*calibrated* coverage is the comparison that is like for like, and it is the
+one the controller feels.)
+
+
+### Coverage, measured rather than asserted
+
+<!-- COVERAGE -->
+
+|    α |   Nominal (1−α) |   Empirical, offline | 95% CI           |   Q (log-ratio) |   Mean U (s) | Would admit   |
+|-----:|----------------:|---------------------:|:-----------------|----------------:|-------------:|:--------------|
+| 0.2  |            0.8  |               0.8503 | [0.8225, 0.8744] |          -0.005 |         9.9  | 19.9%         |
+| 0.1  |            0.9  |               0.9299 | [0.9091, 0.9463] |           0.176 |        12.07 | 15.0%         |
+| 0.05 |            0.95 |               0.9684 | [0.9530, 0.9789] |           0.355 |        14.63 | 10.6%         |
+| 0.01 |            0.99 |               0.9973 | [0.9900, 0.9992] |           0.73  |        21.74 | 3.7%          |
+
+And the same quantity measured while the controller was deciding — where the calibration set no longer describes what runs, because the controller chose it:
+
+| Arm                            |   Nominal (1−α) |   Empirical, online |   Admitted and completed |   Censored (client gave up) |   Mean U (s) |   Mean realised E2E (s) |
+|:-------------------------------|----------------:|--------------------:|-------------------------:|----------------------------:|-------------:|------------------------:|
+| 5  + conformal admission (95%) |            0.95 |              0.9978 |                      894 |                           0 |         2.67 |                    0.78 |
+| 5  + conformal admission (80%) |            0.8  |              0.876  |                     1387 |                           0 |         2.37 |                    1.37 |
+
+<!-- /COVERAGE -->
+
+Every offline point is on or above the diagonal, which is what a conservative
+finite-sample bound should look like: at α=0.01 the measured coverage is
+0.9973 on 728 held-out requests, and the four levels together trace the
+calibration line rather than one point on it.
+
+Two things about the online column are worth reading carefully, because they
+are the ones the theory does not cover.
+
+**The direction of the error is conservative, not optimistic.** The build guide
+warns that a shedding controller invalidates exchangeability, and it does — but
+here it does so in the *safe* direction. The 95% arm's mean bound was 2.67 s
+and its admitted requests came back in 0.78 s on average, for a measured
+coverage of 0.9978 against a promise of 0.95. The controller emptied the system
+on behalf of the requests it admitted, so they ran on a machine the calibration
+set never saw. Every one of those margins is goodput refused for nothing, and
+that is the argument for the rolling recalibration below rather than an
+argument that the bound is wrong.
+
+**Outside the load range it was fitted on, the bound fails — visibly.** The
+rung-4 arm of the sweep runs with admission off and the trace log on, which
+makes it a second, entirely held-out test set, and one that reaches offered
+loads the training set does not: coverage there is **1.00 at 0.6, 1.0 and
+1.9 rps, 0.47 at 4 rps and 0.18 at 6 rps**. The training set was collected at
+up to 3.4 rps, where the deepest queue seen was a few dozen requests and the
+slowest response took 68 s; at 6 rps with nothing shed the median response
+takes 110 s, and a gradient-boosted model asked about that state is
+extrapolating past its last split point. This is exactly the exchangeability
+assumption failing, measured rather than asserted — and it is also why the
+number does not undermine the controller: with admission on, those states never
+occur, which is what the online column says.
+
+
+![Conformal coverage](docs/figs/w4/w4_coverage.png)
+
+![Bound against outcome](docs/figs/w4/w4_bound_vs_realised.png)
+
+### The overload experiment
+
+Four arms, identical in every respect except the admission policy — the
+unmanaged rung 4, and the same controller asked for a 99%, a 95% and an 80%
+per-request guarantee. Run rate-major with the arm order rotated between rates
+and the gateway restarted for every (arm, rate) pair, which is the same
+protection against thermal drift the Week 2 ladder uses.
+
+The grid keeps three of Week 2's offered loads so the shared rung stays
+comparable across the two sessions, and adds 4.0 and 6.0 rps: four and six
+times the load at which this configuration's goodput peaks in this session
+(1.0 rps), and two to three times the knee the Week 2 ladder measured
+(≈1.9 rps). Either way it is past the point where the unmanaged system stops
+returning anything on time.
+
+<!-- ADMISSION -->
+
+| Config                         |   Offered (rps) | Shed   |   Admitted (rps) |   Goodput (rps) | SLO met, all arrivals   | SLO met, admitted   | p50 E2E (s)   | p99 E2E (s)   | p99 TTFT (s)   |
+|:-------------------------------|----------------:|:-------|-----------------:|----------------:|:------------------------|:--------------------|:--------------|:--------------|:---------------|
+| 4  + paged KV + prefix cache   |             0.6 | 0%     |             0.76 |            0.72 | 95%                     | 95%                 | 0.87          | 4.56          | 0.61           |
+| 4  + paged KV + prefix cache   |             1   | 0%     |             1.23 |            1.1  | 90%                     | 90%                 | 1.38          | 9.25          | 1.13           |
+| 4  + paged KV + prefix cache   |             1.9 | 0%     |             2.08 |            0.96 | 46%                     | 46%                 | 4.31          | 28.84         | 1.95           |
+| 4  + paged KV + prefix cache   |             4   | 0%     |             4.12 |            0    | 0%                      | 0%                  | 48.36         | 80.95         | 61.70          |
+| 4  + paged KV + prefix cache   |             6   | 0%     |             5.93 |            0    | 0%                      | 0%                  | 110.05        | 203.59        | 186.92         |
+| 5  + conformal admission (99%) |             0.6 | 100%   |             0    |            0    | 0%                      | -                   | -             | -             | -              |
+| 5  + conformal admission (99%) |             1   | 100%   |             0    |            0    | 0%                      | -                   | -             | -             | -              |
+| 5  + conformal admission (99%) |             1.9 | 100%   |             0    |            0    | 0%                      | -                   | -             | -             | -              |
+| 5  + conformal admission (99%) |             4   | 100%   |             0    |            0    | 0%                      | -                   | -             | -             | -              |
+| 5  + conformal admission (99%) |             6   | 100%   |             0    |            0    | 0%                      | -                   | -             | -             | -              |
+| 5  + conformal admission (95%) |             0.6 | 80%    |             0.15 |            0.15 | 20%                     | 100%                | 0.47          | 1.73          | 0.40           |
+| 5  + conformal admission (95%) |             1   | 53%    |             0.58 |            0.58 | 47%                     | 100%                | 0.55          | 1.80          | 0.44           |
+| 5  + conformal admission (95%) |             1.9 | 59%    |             0.86 |            0.86 | 41%                     | 100%                | 0.59          | 1.97          | 0.55           |
+| 5  + conformal admission (95%) |             4   | 65%    |             1.44 |            1.44 | 35%                     | 100%                | 0.68          | 2.50          | 0.68           |
+| 5  + conformal admission (95%) |             6   | 65%    |             2.08 |            2.08 | 35%                     | 100%                | 0.71          | 2.42          | 0.62           |
+| 5  + conformal admission (80%) |             0.6 | 19%    |             0.61 |            0.61 | 81%                     | 100%                | 0.63          | 2.71          | 0.46           |
+| 5  + conformal admission (80%) |             1   | 26%    |             0.92 |            0.92 | 74%                     | 100%                | 0.81          | 3.13          | 0.60           |
+| 5  + conformal admission (80%) |             1.9 | 34%    |             1.38 |            1.37 | 66%                     | 100%                | 0.89          | 3.57          | 0.72           |
+| 5  + conformal admission (80%) |             4   | 47%    |             2.18 |            2.14 | 52%                     | 98%                 | 1.04          | 4.48          | 0.72           |
+| 5  + conformal admission (80%) |             6   | 55%    |             2.7  |            2.53 | 43%                     | 94%                 | 1.30          | 6.62          | 1.00           |
+
+<!-- /ADMISSION -->
+
+**The headline, at 6 rps — six times the offered load at which this
+configuration's goodput peaks, and past the point where the unmanaged system
+returns nothing useful at all:**
+
+| | no admission | 95% guarantee | 80% guarantee |
+|---|---|---|---|
+| p99 end-to-end | **203.6 s** | **2.42 s** | 6.62 s |
+| Goodput (SLO 4 s) | **0.00 rps** | 2.08 rps | **2.53 rps** |
+| SLO met, of everything offered | 0% | 35% | 43% |
+| SLO met, of what was admitted | 0% | 100% | 94% |
+| Shed | 0% | 65% | 55% |
+
+Averaged over the three offered loads past saturation (1.9, 4.0 and 6.0 rps),
+goodput is **4.6× the unmanaged system's at the 95% guarantee and 6.3× at the
+80% one** — against an unmanaged mean of 0.32 rps, which is itself an average
+of one working point and two zeros.
+
+The p99 line is the claim the project was built to make, and it is now
+measured: it does not merely improve, it *stops depending on offered load*.
+Between 0.6 and 6 rps — a tenfold range — the 95% arm's p99 moves from 1.73 s
+to 2.42 s. The unmanaged line over the same range moves from 4.56 s to 203.6 s.
+
+And the cost is equally clear, because it is in the same table. **Below
+saturation, admission control loses goodput**: at 0.6 rps the unmanaged system
+delivers 0.72 rps within the SLO and the 95% arm delivers 0.15. It refuses
+long requests that would in fact have made it, because their *predictive tail*
+does not fit even when their median does. That is not a tuning failure — it is
+what a per-request guarantee costs on a workload whose output lengths span
+16 to 512 tokens, and the two arms bracket the trade: the weaker promise gives
+up less at low load and holds a looser tail at high load.
+
+The frontier between them is the actual result of the week. There is no single
+"admission control" configuration to report — there is a knob, α, which sets
+how strong a promise is made about each admitted request, and the measurement
+says where each setting lands:
+
+| Guarantee | p99 across the whole range | Goodput past saturation | Cost at 0.6 rps |
+|---|---|---|---|
+| 99% (α=0.01) | — | 0.00 rps | refuses everything |
+| 95% (α=0.05) | 1.73–2.50 s, never above the SLO | 1.46 rps (4.6×) | 0.15 vs 0.72 rps |
+| 80% (α=0.20) | 2.71–6.62 s, above the SLO past 4 rps | 2.01 rps (6.3×) | 0.61 vs 0.72 rps |
+| none | 4.56–203.6 s | 0.32 rps | 0.72 rps |
+
+
+![Latency vs offered load, with and without admission](docs/figs/w4/latency_vs_load.png)
+
+![Goodput vs offered load, with and without admission](docs/figs/w4/goodput_vs_load.png)
+
+![Shed rate](docs/figs/w4/w4_shed_rate.png)
+
+![Admission over time](docs/figs/w4/w4_admitted_over_time.png)
+
+The last figure is the one that would have exposed a controller without
+damping. Shedding is a positive feedback loop — shed, load falls, predictions
+improve, admit, load rises — and an undamped version of it oscillates with a
+period set by how long a request takes. It does not: over the steady window of
+the 6 rps run, the admitted rate holds a mean of 2.69/s with a standard
+deviation of **0.58 across 5 s bins, against the 0.73 a Poisson process of that
+mean would produce on its own**, and a lag-1 autocorrelation of −0.22 on 30
+bins, which is within noise of zero. The controller varies *less* than the
+arrivals it is filtering, which is what a Schmitt trigger on a noisy signal is
+supposed to do.
+
+### The arm that refuses everything, and why that is a result
+
+The 99% arm sheds 100% of arrivals at every offered load, including 0.6 rps on
+an idle machine. Two things compound, and both are arithmetic rather than
+misfortune.
+
+**The budget is smaller than the workload's own tail.** Week 2 chose a 4 s SLO
+from a calibration that put implied unloaded end-to-end latency at p50 1.56 s
+and **p95 5.0 s**. A 99% per-request bound has to cover a request's own
+99th percentile; for a workload whose 95th percentile exceeds the budget on an
+*empty* server, almost no request can qualify. The measured bound for the
+shortest requests in the mix sits at 3.2–3.8 s on a warm idle server — inside
+the budget, but only just.
+
+**And "warm" is where the second loop bites.** `n_cached_prefix_tokens` is a
+feature, and a correct one: a request that hits a cached system prompt really
+is seconds cheaper. But the cache is warmed *by admitted requests*. A
+controller that refuses everything keeps it cold, every request then carries
+540 tokens of prefill instead of 40, and the bound for even the shortest
+request rises past the budget — which is the state that made it refuse in the
+first place. Unlike the arrival rate, this feature is not confounded; the loop
+is real. The system simply has two equilibria and this arm starts in the wrong
+one. The measured signature is in the run log: the 99% arm's prefix hit rate is
+0.00 at every load, while the arms next to it sit at 0.72–0.80.
+
+The fix is not a smaller α — it is a warm start, the same shape of answer as
+`Engine.warmup()`: admit a small exploration quota regardless of the bound,
+long enough for the cache and the state features to reach the regime the model
+was fitted in. That is a Week 5 item and it is not in this measurement, so the
+99% row stays in the table as a zero.
+
+### The same rung, measured twice
+
+Rung 4 appears in the Week 2 ladder and again here as this sweep's control arm:
+same workload, same seed, same duration, same SLO, same configuration, five
+weeks and one differently-warm laptop apart. At the three offered loads they
+share, goodput agrees to **0.02%, 0.6% and 16.8%** (0.72 vs 0.72, 1.10 vs 1.10,
+0.96 vs 1.16 rps) and p99 to 4%, 11% and 6%. The 1.9 rps point is the outlier,
+and it is the one at the knee, where a small difference in service rate moves a
+lot of queue.
+
+That is the number to hold against any comparison drawn across the two
+sessions, and it is why the five-rung chart is not drawn: rungs 1–3 were
+measured in the Week 2 session and rungs 4–5 in this one, so a single figure
+with all five lines would imply an interleaving that did not happen.
+
+### The policy, decision by decision
+
+| Decision | Options | What this does, and why |
+|---|---|---|
+| Shed which requests? | longest predicted, newest arrival | Longest predicted. The bound *is* the predicted cost, so refusing on `U(x) > budget` sheds one expensive request instead of several cheap ones, which is the goodput-maximising choice. |
+| Shed at arrival or at dequeue? | either, or both | At arrival. A dequeue-time re-check is implemented behind the same interface but is not part of the headline run: with the queue held short by arrival-time shedding there is little state change left to re-check, and an arm that is not run is not reported. |
+| Queue discipline | FIFO / EDF / SJF | EDF, from Week 1 — `Request.__lt__` orders the wait queue by deadline. With a constant SLO that degenerates to arrival order, which is why the controller's action space here is two-valued rather than the guide's three: there is no "queue it with an earlier deadline" to choose, because admission does not decide queue position. SJF would raise raw goodput and starve long requests; it is a scheduler ablation, not an admission one. |
+| Safety factor | 1.0, or tuned | 1.0. A tuned fudge factor with no measurement behind it is a red flag, so the trade-off is *reported* instead — see the safety sweep above, read off the held-out split. |
+| Response to shed | 503 + `Retry-After` | Standard and honest. `Retry-After` is the queue's remaining decode work divided by the measured token rate, floored and capped — an estimate of when capacity will exist rather than a constant wearing a header's clothes. |
+| Damping | none / hysteresis | Hysteresis. Shedding is a positive feedback loop: shed, load falls, predictions improve, admit, load rises. Once shedding, the bound must fit inside 0.9× the budget before admitting resumes, so the two thresholds differ and the loop cannot chatter at the boundary. The admitted-rate-over-time figure is where that is checked. |
+
+### Where the guarantee does not hold
+
+The marginal guarantee assumes calibration and test requests are exchangeable.
+**The controller breaks that assumption itself**, and it is worth being exact
+about how: the bound is calibrated on traces collected with admission off, and
+the moment it starts shedding it changes the distribution of what runs. The
+requests it then measures are the ones it chose.
+
+This is not a reason to omit the number — it is a reason to measure both. The
+offline coverage above is the guarantee under its own assumptions; the online
+number is the same quantity computed over the requests the controller actually
+admitted, from the traces it wrote while deciding.
+
+The direction of the discrepancy is the interesting part, and it is the
+opposite of the one the build guide warns about. Shedding does not make the
+bound optimistic — it makes it **conservative**, because the requests that are
+admitted then run on a system the controller has emptied on their behalf, which
+is not the system the calibration set was collected on. Measured, the admitted
+requests beat their own bounds far more often than the level promises, and
+every one of those margins is goodput that was refused for nothing.
+
+Two mitigations are implemented and unit-tested
+(`cadence/admission/conformal.py`): a rolling recalibration over the most
+recent completions, and adaptive conformal inference, which updates the working
+level online (`α_{t+1} = α_t + γ(α − err_t)`) and provably drives long-run
+coverage to `1−α` under shift, at the cost of the finite-sample marginal
+guarantee. `tests/test_conformal.py` exercises exactly that trade on a
+synthetic stream: a three-sigma shift drops the static bound's coverage to 4%,
+and ACI holds 90.0% against a 90% target on the same stream.
+
+Neither is in the deployed configuration, and the reason is a timescale rather
+than a preference. The rolling window holds 512 completions and ACI's step is
+`γ = 0.005` per observation. At the admitted rates measured here — 0.15 to
+2.7 requests per second — a 180 s run produces between 27 and 490 completions,
+so the window is only close to turning over at the very top of the grid, and
+ACI's working level moves by thousandths over a whole run. They are the right
+mechanisms for a service that runs for hours and the wrong ones to credit for a
+three-minute measurement, so they are reported as built and tested rather than
+as a result. Sizing them for a run this short would be tuning the mechanism to
+the experiment.
+
 ---
 
 ## What is in the box
@@ -918,6 +1537,33 @@ model. It produces no number in this README; it exists so that the scheduler,
 the KV bookkeeping, the streaming path and the load generator are all enforced
 in CI without a 500 MB GGUF or a GPU.
 
+### Admission control (`src/cadence/admission/`)
+
+Six small modules, one job each, split along the line that matters: what is
+knowable at admission (`features.py`), what predicts latency from it
+(`predictor.py`), what turns a prediction into a guarantee (`conformal.py`),
+what turns a guarantee into a decision (`conformal_controller.py`), what that
+model looks like on disk (`artifact.py`), and how the training set was recorded
+in the first place (`trace.py`).
+
+The two seams worth pointing at:
+
+**`extract(ctx, snap)` takes an `AdmitContext` and a `Snapshot`, and nothing
+else.** Neither can reach the `Request`, which is where every after-the-fact
+field lives, so the leak that would invalidate the whole week is a type error
+rather than a code-review question.
+
+**`SplitConformalUpperBound.calibrate_scores` is separate from `calibrate`.**
+The offline path has features and outcomes; the online path already has the
+score, because the controller kept the bound each admitted request was admitted
+on. Keeping them separate is what lets the rolling and adaptive modes recalibrate
+on the response path without running the model a second time per request.
+
+The controller's cost on the request path is a histogram
+(`cadence_admission_decision_seconds`) rather than an assumption: feature
+extraction plus two gradient-boosted quantile predictions measure p50 0.35 ms,
+p99 0.42 ms on this machine.
+
 ### Observability (`src/cadence/obs/`)
 
 Prometheus histograms with buckets **dense around the SLO** — the default
@@ -962,6 +1608,8 @@ The tests worth knowing about:
 | `test_kv_parity` | The differential fuzz: random operation sequences driven through the Python reference and the C++17 core in lockstep, comparing every observable — including block ids — after every step. 600 sequences per PR, 5 000 on `main`, with the coverage each sequence reached reported rather than assumed. |
 | `test_scheduler` | A late arrival joins the running batch (and, under static batching, provably cannot). KV blocks and sequence ids return to baseline after a run and after a mid-stream client disconnect. A prefix matched during admission is not evicted out from under the admission decision — the Week 3 crash, with both failure modes covered. `CADENCE_KV_CORE=auto` degrades to the Python reference when the extension is missing, and an explicit `cpp` refuses to. |
 | `test_api_sse` | An unmodified `openai` Python client streams against the server. Concurrent streams carry only their own tokens. Dashboard queries reference metrics that exist. |
+| `test_conformal` | The guarantee itself, including with a *deliberately useless* predictor — if coverage depended on the model being good, the method would be a heuristic with a proof attached. The finite-sample correction, the `n >= 100` arithmetic behind it, the Monte-Carlo marginal-coverage check over 4 000 fresh calibration sets, and the two ways the guarantee is lost and recovered: a distribution shift drops static coverage to 4%, ACI holds 90.0% against a 90% target on the same stream. |
+| `test_admission` | That the feature extractor *structurally cannot* see the outcome — the leak that would make every number in Week 4 meaningless. Then the policy: the bound is conditional and not constant, hysteresis stops the shed/admit loop chattering, the queue cap still overrides the model, `Retry-After` is derived from work in flight, a client timeout is treated as censored rather than as an observation. Then the whole path: a gateway with a fitted model refuses with a 503 and a `Retry-After`, and the trace it writes round-trips into a design matrix. |
 
 ---
 
@@ -1003,9 +1651,8 @@ correctly and uselessly, that they are the same.
 **4. Goodput declines past its own peak, and nothing in Weeks 1–2 stops it.**
 Rung 4 peaks at 1.19 rps of goodput at 1.4 rps offered, then falls to 1.16 at
 1.9 and 1.01 at 2.6 — it does more work and delivers less of it on time. No
-rung holds p99 flat past saturation. The project's headline claim is a Week 4
-claim, and Weeks 1–2 do not support it yet; what they establish is the baseline
-it will have to beat and the harness that can tell whether it did.
+rung holds p99 flat past saturation, because no rung refuses work. Week 4's
+controller is what closes this, and rows 7–10 below are what it costs.
 
 **5. The prefix cache's value is entirely contingent on KV headroom, and at the
 first sizing it measured nothing.** At 8 192 KV cells the running batch alone
@@ -1117,6 +1764,48 @@ sequence is preempted.
 
 ---
 
+**7. Admission control loses goodput below saturation, and the stronger the
+guarantee the more it loses.** At 0.6 rps offered — comfortably inside
+capacity — the unmanaged system delivers 0.72 rps within the SLO; the 80%
+guarantee delivers 0.61 and the 95% guarantee 0.15. Every one of those refused
+requests would probably have been served in time. The controller refuses them
+because their *predictive tail* does not fit the budget even when their median
+does, which is what a per-request guarantee means on a workload whose requested
+output lengths span 16 to 512 tokens. A gateway that ran below saturation all
+day would be worse off with this switched on, and the honest statement of the
+result is a frontier rather than a number.
+
+**8. The 99% guarantee is unattainable against this SLO, and the controller
+says so by refusing everything.** Not a bug and not a tuning failure: the
+workload's implied unloaded p95 is 5.0 s against a 4 s budget, so a bound that
+must hold for 99% of a request's own distribution has almost nothing it can
+admit. It compounds with a second, real feedback loop — the prefix-cache
+feature is warmed only by admitted requests, so an arm that admits nothing
+keeps the cache cold, which is the state in which the bound is largest. Its
+measured prefix hit rate is 0.00 at every offered load while the arms beside it
+sit at 0.72–0.80. The fix is a warm-start exploration quota, and it is a
+Week 5 item.
+
+**9. Outside the load range the model was fitted on, the bound stops holding —
+by a lot.** On the rung-4 arm of the Week 4 sweep, which runs with admission
+off, the 99% bound covers 100% of requests at 0.6, 1.0 and 1.9 rps, 47% at
+4 rps and 18% at 6 rps. The training set reached 3.4 rps; at 6 rps with nothing
+shed the median response takes 110 s, which is past every split point the trees
+have. The guarantee is conditional on exchangeability with the calibration
+data, this is what that condition failing looks like, and it is only harmless
+here because a controller that is switched on never lets the system reach that
+state.
+
+**10. The online recalibration modes are built and tested but cannot act on a
+three-minute run.** The rolling window holds 512 completions and ACI's step is
+0.005 per observation; at the admitted rates measured here, a 180 s run
+replaces a fraction of that window and moves the working level by thousandths.
+They are the right mechanism for a service that runs for hours, and reporting
+them as a result of these runs would be reporting a mechanism that never
+engaged.
+
+---
+
 ## Roadmap
 
 | Week | Ships | Status |
@@ -1125,8 +1814,8 @@ sequence is preempted.
 | 1 | SSE gateway, FIFO baseline, open-loop load generator, metric definitions | Done |
 | 2 | Continuous batching, paged KV, radix prefix cache, metrics + tracing stack | Done |
 | 3 | Block allocator and radix match in C++17 behind pybind11, fuzz-tested against the Python reference | Done |
-| 4 | Latency predictor + split-conformal admission control | Not started |
-| 5 | Full ablation ladder with seeds, CI load gate, deploy, writeup | Partial — the four-rung ladder, the charts and the writeup exist; rung 5, multiple seeds and the CI load gate are Week 5 |
+| 4 | Latency predictor + split-conformal admission control | Done |
+| 5 | Full ablation ladder with seeds, CI load gate, deploy, writeup | Partial — the ladder, the charts and the writeup exist, and rung 5 is now measured against rung 4 on its own grid. Week 5: multiple seeds, one interleaved five-rung sweep, the CI load gate, and the warm-start quota that would let the 99% arm out of its cold-cache equilibrium |
 
 Week 3 began with a profile under load, the profile said the allocator and the
 radix match are *not* on the hot path, and that is written down: see
@@ -1140,12 +1829,12 @@ is worth being explicit about which:
 
 | | |
 |---|---|
-| Rung 5 (conformal admission) | Week 4. Its absence is why "holds p99 under overload" is not claimed. |
+| One five-rung sweep in a single session | Rungs 1–4 come from the Week 2 ladder and rungs 4–5 from the Week 4 sweep, which share a workload, a seed, a duration and an SLO but not a session. The rung-4 arm appears in both, so the two are cross-checkable, and that comparison is reported — but a single interleaved run of all five rungs is a Week 5 job. |
 | Three seeds per rung | The ladder is one seed. Run-to-run spread *is* quantified — three replicates of one configuration agree to within 1.7% on every metric — but that is not the same as three arrival realisations, and the Week 5 table will need the latter. |
 | CI load-test regression gate | The CI runs correctness, lint and a check that the README's numbers match the committed parquet. It does not yet fail a PR on a goodput regression. |
 | An end-to-end win from the C++ core | There isn't one, and the arithmetic says there could not be at this model size. The claim the port supports is correctness and a written-down interface, not speed. |
 | Live deployment URL | `docker compose` is committed but unverified (no Docker on this machine — see above). |
-| Empirical coverage plot | Week 4; there is no predictor to have coverage yet. |
+| A predictor that survives a workload change | The model is fitted on *this* workload and this machine. Nothing here establishes that it transfers to another prompt mix, and the honest mitigation for that is the rolling recalibration in `conformal.py`, which is implemented and unit-tested but is not the mode the headline run used. |
 
 ---
 
@@ -1162,18 +1851,27 @@ src/cadence/
                         protocols.py (the interface both cores satisfy),
                         cpp.py (the C++ core, assembled the same way)
     backends/           base.py protocol, llamacpp.py, mock.py
-  admission/    Week 4: features, predictor, conformal, controller
+  admission/    features.py     admission-time feature vector, no lookahead
+                predictor.py    quantile regression + the two baselines
+                conformal.py    split-conformal bound, rolling and adaptive
+                conformal_controller.py   the admit/shed policy
+                artifact.py     the fitted model on disk
+                trace.py        one JSONL row per request: features, outcome
   obs/          Prometheus collectors, OpenTelemetry setup, sampling profiler
   _core.pyi     hand-written stubs for the extension
+models/         the GGUF (not committed) and admission.pkl (committed: the
+                fitted predictor, its calibration scores and the provenance
+                sidecar, 2 MB)
 src/cpp/        the C++17 KV core
   include/cadence/    block_allocator.hpp, radix_cache.hpp
   src/bindings.cpp    pybind11 module, built by scikit-build-core on install
 bench/          calibrate, validate_loadgen, loadgen, workloads, stub_server,
                 run_sweep, run_ladder, run_knobs, merge_rerun, srchash,
-                run_ablation.sh, run_week3.sh,
+                run_ablation.sh, run_week3.sh, run_week4.sh,
                 profile_core, flamegraph, bench_core,
-                analyze, charts, make_report, knob_report, core_report,
-                embed_tables
+                collect_traces, traces, fit_predictor,
+                analyze, charts, w4_charts, make_report, knob_report,
+                core_report, w4_report, embed_tables
 deploy/         docker-compose, Prometheus, OTel collector, generated Grafana dashboard
 results/
   calibration.json        machine measurements the sweep grid and SLO were chosen from
@@ -1185,6 +1883,13 @@ results/
   w3_profile/             sampling profile of the scheduler thread, per KV core
   w3_bench/               the C++/Python microbenchmark
   w3_ab/                  the end-to-end A/B between the two KV cores
+  w4_traces/              the admission training set: one JSONL block per
+                          (round, offered load), collected with admission off
+  w4_fit/                 the fit: coverage, baselines, safety sweep, and the
+                          per-request predictions the coverage figure is drawn
+                          from
+  w4_admission/           the two-arm overload sweep, and the traces the
+                          controller wrote while it was deciding
   validation/             open-loop generator checked against a model-free stub
 docs/           tables and figures, all generated from the parquet above
 tests/
