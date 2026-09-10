@@ -20,7 +20,7 @@ import enum
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # a cycle at runtime, a type at check time
     from cadence.obs.tracing import RequestTrace
@@ -61,6 +61,20 @@ class Request:
     n_preemptions: int = 0
     finish_reason: str | None = None
     ts: dict[str, float] = field(default_factory=dict)
+
+    # --- what admission thought, kept for the trace and for recalibration ---
+    features: Any = None
+    """The admission-time feature vector (a ``numpy`` row), or None when no
+    controller and no trace log asked for one. Typed loosely so that this
+    module, which every other one imports, does not pull numpy in with it."""
+    predicted_e2e_s: float | None = None
+    """The conformal upper bound this request was admitted on."""
+    admit_reason: str = ""
+    cached_prefix_probe: int = 0
+    """What the prefix cache said at *admission* -- which is a feature, and is
+    not the same number as ``cached_prefix_len``, which is what the request
+    actually got when it was finally dequeued. Keeping both is how the trace
+    can show that the difference matters."""
 
     # --- cross-thread streaming plumbing ---------------------------------
     loop: asyncio.AbstractEventLoop | None = None
