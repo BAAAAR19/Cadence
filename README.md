@@ -2059,7 +2059,7 @@ engaged.
 | 2 | Continuous batching, paged KV, radix prefix cache, metrics + tracing stack | Done |
 | 3 | Block allocator and radix match in C++17 behind pybind11, fuzz-tested against the Python reference | Done |
 | 4 | Latency predictor + split-conformal admission control | Done |
-| 5 | Full ablation ladder with seeds, CI load gate, deploy, writeup | Partial — the ladder, the charts and the writeup exist, and rung 5 is now measured against rung 4 on its own grid. Week 5: multiple seeds, one interleaved five-rung sweep, the CI load gate, and the warm-start quota that would let the 99% arm out of its cold-cache equilibrium |
+| 5 | Full ablation ladder with seeds, CI load gate, deploy, writeup | Done — five rungs, six offered loads, three seeds, interleaved and thermally probed; four figures; a load gate that has been shown to go red; a deployable image with readiness, drain and a memory bound. See [Week 5](#week-5-the-ladder-three-seeds-and-a-gate-that-can-fail) |
 
 Week 3 began with a profile under load, the profile said the allocator and the
 radix match are *not* on the hot path, and that is written down: see
@@ -2073,11 +2073,12 @@ is worth being explicit about which:
 
 | | |
 |---|---|
-| One five-rung sweep in a single session | Rungs 1–4 come from the Week 2 ladder and rungs 4–5 from the Week 4 sweep, which share a workload, a seed, a duration and an SLO but not a session. The rung-4 arm appears in both, so the two are cross-checkable, and that comparison is reported — but a single interleaved run of all five rungs is a Week 5 job. |
-| Three seeds per rung | The ladder is one seed. Run-to-run spread *is* quantified — three replicates of one configuration agree to within 1.7% on every metric — but that is not the same as three arrival realisations, and the Week 5 table will need the latter. |
-| CI load-test regression gate | The CI runs correctness, lint and a check that the README's numbers match the committed parquet. It does not yet fail a PR on a goodput regression. |
+| One five-rung sweep in a single session | Rungs 1–4 are one interleaved block. Rung 5's usable arms are a *second* block, run hours later, because the first block's rung 5 turned out to be the arm that refuses everything. Rung 4 was run again alongside them as an anchor, so the cost of that is [measured rather than promised](#what-two-blocks-cost). |
+| Three seeds per rung | Done. Every cell in the Week 5 tables is the mean of three arrival realisations with the range beside it, and the three seeds' realisations were recorded before the sweep rather than chosen after it. |
+| CI load-test regression gate | Done, and demonstrated failing. One caveat is marked in the baseline file itself: the committed thresholds were measured on a laptop rather than on a runner, and the `refresh the baseline` workflow exists to replace them. |
 | An end-to-end win from the C++ core | There isn't one, and the arithmetic says there could not be at this model size. The claim the port supports is correctness and a written-down interface, not speed. |
-| Live deployment URL | `docker compose` is committed but unverified (no Docker on this machine — see above). |
+| Live deployment URL | The image, `fly.toml`, the readiness/drain/cap machinery and the deploy runbook are committed, and the drain is asserted by a test on every CI run. The container itself is still unverified end to end — there is no Docker on this machine — so the build is reviewed rather than run, and no number anywhere in this README comes from it. |
+| Admission control on the deployed instance | Off, deliberately. The committed predictor was calibrated on Metal and is not a valid bound on a CPU container; the gateway now says so at start-up instead of silently shedding everything. The four-command recalibration procedure is in `deploy/README.md`. |
 | A predictor that survives a workload change | The model is fitted on *this* workload and this machine. Nothing here establishes that it transfers to another prompt mix, and the honest mitigation for that is the rolling recalibration in `conformal.py`, which is implemented and unit-tested but is not the mode the headline run used. |
 
 ---
@@ -2111,12 +2112,18 @@ src/cpp/        the C++17 KV core
   src/bindings.cpp    pybind11 module, built by scikit-build-core on install
 bench/          calibrate, validate_loadgen, loadgen, workloads, stub_server,
                 run_sweep, run_ladder, run_knobs, merge_rerun, srchash,
-                run_ablation.sh, run_week3.sh, run_week4.sh,
+                run_ablation.sh, run_week3.sh, run_week4.sh, run_week5.sh,
+                report_week5.sh, ci_baseline.sh,
                 profile_core, flamegraph, bench_core,
                 collect_traces, traces, fit_predictor,
-                analyze, charts, w4_charts, make_report, knob_report,
-                core_report, w4_report, embed_tables
-deploy/         docker-compose, Prometheus, OTel collector, generated Grafana dashboard
+                analyze, charts, w4_charts, w5_charts, make_report,
+                knob_report, core_report, w4_report, w5_report, embed_tables,
+                check_regression   the CI load gate
+                demo_drain         the graceful shutdown, as an assertion
+  baselines/    ci_baseline.json   the budget the load gate enforces
+deploy/         Dockerfile (three stages: weights, build, runtime), fly.toml,
+                entrypoint.sh, docker-compose, Prometheus, OTel collector,
+                generated Grafana dashboard, README.md
 results/
   calibration.json        machine measurements the sweep grid and SLO were chosen from
   loadgen_validation.json arrival process over 200 seeds
@@ -2134,6 +2141,14 @@ results/
                           from
   w4_admission/           the two-arm overload sweep, and the traces the
                           controller wrote while it was deciding
+  w5_ladder/              the five-rung ladder: 90 runs, three seeds, with
+                          per-run parts, the thermal probe log and provenance
+  w5_ladder_r5/           the rung-5 arms and the rung-4 anchor, 54 runs
+  w5_loadgen_seed*.json   the three seeds' arrival realisations, recorded
+                          before the sweep rather than after it
+  ci_traces/, ci_fit/     the mock backend's own admission calibration, which
+                          the CI load gate needs and the laptop's cannot serve
+  ci_gate/                the run the committed CI baseline was measured from
   validation/             open-loop generator checked against a model-free stub
 docs/           tables and figures, all generated from the parquet above
 tests/
