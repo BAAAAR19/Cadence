@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import platform
 import sys
 from pathlib import Path
 
@@ -183,6 +184,47 @@ def evaluate(bound, X, y, slo_s: float) -> dict:
     }
 
 
+def calibration_domain(paths: list[str]) -> dict:
+    """The conditions the calibration set was drawn under.
+
+    Split conformal guarantees coverage on data exchangeable with the
+    calibration scores, and nothing else. Change the backend, the machine, the
+    context size or the workload and the scores describe a distribution the
+    live traffic is not drawn from -- at which point the bound is not
+    conservative, it is arbitrary. That is not hypothetical: the artifact
+    fitted on llama.cpp with Metal, loaded against the mock backend, refuses
+    100% of requests at zero load, because a bound learned from 4-second
+    latencies is nonsense about 0.4-second ones.
+
+    So the conditions travel with the model, read from the collection's own
+    meta.json rather than from whatever this process happens to be configured
+    with, and ``cadence.admission.conformal_controller`` checks them at
+    start-up.
+    """
+    env: dict = {}
+    source = None
+    for raw_path in paths:
+        p = Path(raw_path)
+        for meta_path in sorted(p.glob("meta*.json")) if p.is_dir() else []:
+            meta = json.loads(meta_path.read_text())
+            env = meta.get("env", {}) or {}
+            source = str(meta_path)
+            break
+        if env:
+            break
+    keys = (
+        "CADENCE_BACKEND", "CADENCE_N_CTX", "CADENCE_MAX_BATCH",
+        "CADENCE_BLOCK_SIZE", "CADENCE_MAX_TOKENS_CAP", "CADENCE_KV_CORE",
+    )
+    return {
+        "source": source,
+        "backend": env.get("CADENCE_BACKEND"),
+        "env": {k: env[k] for k in keys if k in env},
+        "platform": f"{platform.system()}-{platform.machine()}",
+        "python": platform.python_version(),
+    }
+
+
 def main(argv=None) -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--traces", nargs="+", default=["results/w4_traces"])
@@ -204,6 +246,7 @@ def main(argv=None) -> None:
     p.add_argument("--outdir", default="results/w4_fit")
     a = p.parse_args(argv)
 
+    domain = calibration_domain(a.traces)
     raw = load_traces(a.traces, drop_warmup_s=a.drop_warmup)
     df = usable(raw)
     split = split_by_round if a.split == "round" else split_by_time_within_rate
@@ -360,6 +403,7 @@ def main(argv=None) -> None:
 
     fit = {
         "alpha": a.alpha,
+        "fitted_on": domain,
         "base_alpha": base_alpha,
         "score": score,
         "selection": selection,
@@ -397,6 +441,14 @@ def main(argv=None) -> None:
         feature_names=tuple(FEATURES),
         meta={
             "src_hash": fit["src_hash"],
+            # The domain the bound is valid on. A conformal guarantee is a
+            # statement about exchangeability with the calibration set, so an
+            # artifact carried to a machine or a backend whose latency
+            # distribution is different is not a conservative bound -- it is
+            # an arbitrary one. Recorded here so that the controller can say
+            # so at start-up instead of silently shedding every request, which
+            # is what a Metal-fitted model does on a CPU container.
+            "fitted_on": domain,
             "base_alpha": base_alpha,
             "traces": fit["traces"],
             "n_train": fit["n_train"],

@@ -43,6 +43,47 @@ from cadence.admission.features import FEATURES, AdmitContext, extract
 from cadence.obs.metrics import Metrics
 
 
+def _check_domain(art: PredictorArtifact, cfg) -> str | None:
+    """Say, loudly, when the bound is being asked about a distribution it was
+    not calibrated on.
+
+    A split-conformal bound guarantees coverage under exchangeability with the
+    calibration set. Nothing about it degrades gracefully when that fails: it
+    does not become a slightly worse bound, it becomes a number with no
+    relationship to the quantity it claims to bound. The way that presents in
+    this system is spectacular and, without this check, unexplained -- the
+    Metal-fitted artifact loaded against the mock backend refuses every single
+    request at zero offered load, because it is predicting four-second
+    latencies for a backend whose requests take four hundred milliseconds, and
+    every one of those refusals looks exactly like correct overload behaviour.
+
+    Not fatal. A mismatch is legitimate while deliberately measuring one (the
+    Week 5 writeup does), and refusing to start would be the wrong response to
+    a warning that is right 100% of the time and important 1% of it. Silence
+    would be worse than either.
+    """
+    fitted = (art.meta or {}).get("fitted_on") or {}
+    backend = fitted.get("backend")
+    if not backend:
+        # Artifacts fitted before the fingerprint existed. Nothing can be
+        # checked, and saying so once is better than implying it was checked.
+        return (
+            f"admission model {getattr(cfg, 'admission_model', '?')} carries no "
+            f"calibration fingerprint; its domain cannot be verified"
+        )
+    if backend == cfg.backend:
+        return None
+    return (
+        f"admission model was calibrated on backend {backend!r} and is being "
+        f"served on {cfg.backend!r}. A conformal bound is only valid on data "
+        f"exchangeable with its calibration set; on a different backend it is "
+        f"not conservative, it is arbitrary, and the usual symptom is that "
+        f"every request is shed at zero load. Refit with "
+        f"`uv run bench/fit_predictor.py` on this backend, or run with "
+        f"CADENCE_ADMISSION=none."
+    )
+
+
 class ConformalController:
     """Admit / shed on a conformal upper bound. Rung 5 of the ladder."""
 
@@ -59,6 +100,9 @@ class ConformalController:
                 f"extracts:\n  model: {list(art.feature_names)}\n  build: {list(FEATURES)}"
             )
         self.artifact = art
+        self.domain_warning = _check_domain(art, cfg)
+        if self.domain_warning:
+            print(f"warning: {self.domain_warning}", flush=True)
         self.alpha = cfg.admission_alpha if cfg.admission_alpha > 0 else art.alpha
         self.bound = build_bound(
             cfg.admission_mode,
@@ -186,6 +230,11 @@ class ConformalController:
         n = self.n_admitted + self.n_shed
         return {
             "policy": self.name,
+            "calibrated_on": (self.artifact.meta or {}).get("fitted_on"),
+            # Surfaced and not only logged: a start-up warning scrolls past,
+            # and the question "is this bound valid here" is one an operator
+            # asks of a running process.
+            "domain_warning": self.domain_warning,
             "mode": self.bound.mode,
             "score": self.bound.score,
             "alpha": self.alpha,
