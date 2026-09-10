@@ -62,6 +62,8 @@ jobs:
         run: |
           uv run bench/make_report.py results/w2_ladder --slo 4.0 --outdir docs
           uv run bench/core_report.py --slo 4.0 --outdir docs
+          uv run bench/w4_report.py results/w4_admission --fit results/w4_fit \
+            --traces results/w4_admission/traces --slo 4.0 --outdir docs
           uv run bench/embed_tables.py --check
           git diff --exit-code docs README.md
 
