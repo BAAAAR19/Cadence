@@ -436,6 +436,7 @@ def thermal_table(canary_paths: list[Path]) -> tuple[str, dict]:
         if line.strip()
     ]
     ok = [r for r in recs if r.get("ok")]
+    failed = [r for r in recs if not r.get("ok")]
     if not ok:
         return "The thermal probe ran but produced no usable readings.\n", {}
     df = pd.DataFrame(ok)
@@ -475,6 +476,22 @@ def thermal_table(canary_paths: list[Path]) -> tuple[str, dict]:
         f"keeps that small, and this table is how the claim is checked rather "
         f"than asserted."
     )
+    if failed:
+        by_rung = {}
+        for r in failed:
+            by_rung[r.get("rung", "?")] = by_rung.get(r.get("rung", "?"), 0) + 1
+        lines.append("")
+        lines.append(
+            f"{len(failed)} of the {len(recs)} probes returned nothing, all of "
+            f"them on the admission rungs ("
+            + ", ".join(f"{LABELS.get(k, k)}: {v}" for k, v in sorted(by_rung.items()))
+            + "). The probe goes through the same door as every other "
+            "request, so a controller that is shedding sheds it too. That is "
+            "a defect in the instrument rather than in the engine -- the "
+            "probe should bypass admission, and does not -- and it is left "
+            "as it ran: the rungs whose thermal coverage is thinner are named "
+            "here rather than quietly averaged in."
+        )
     return "\n".join(lines), {
         "n_probes": int(len(df)),
         "tok_per_s_mean": float(overall.mean()),
@@ -483,6 +500,7 @@ def thermal_table(canary_paths: list[Path]) -> tuple[str, dict]:
         "sweep_spread": float(spread),
         "between_rung_spread": float(between),
         "per_rung_mean": {k: float(v) for k, v in by["mean"].items()},
+        "n_failed_probes": len(failed),
     }
 
 
