@@ -16,7 +16,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
       - name: Build source and wheel distributions
         run: uv build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: distributions
           path: dist/*
