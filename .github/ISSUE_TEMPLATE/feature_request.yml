@@ -1,0 +1,24 @@
+name: Feature or experiment proposal
+description: Propose an improvement to scheduling, caching, admission, or measurement.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the serving or measurement limitation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+    validations:
+      required: true
+  - type: textarea
+    id: evaluation
+    attributes:
+      label: How would we know it worked?
+      description: Name the workload, baseline, and metric that should change.
+    validations:
+      required: true

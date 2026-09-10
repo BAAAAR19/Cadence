@@ -1,0 +1,43 @@
+name: Bug report
+description: Report incorrect gateway, scheduler, cache, or benchmark behaviour.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach credentials, private prompts, model files, or production traces.
+        Use synthetic prompts and redact logs before posting them publicly.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Include the command or request and the full error or unexpected output.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Cadence revision
+      description: Commit SHA or release tag.
+      placeholder: "09b66e8"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Python, OS, hardware, and backend
+      placeholder: "Python 3.11, macOS 15, Apple M1, llama.cpp"
+    validations:
+      required: true
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Configuration
+      description: Relevant CADENCE_* settings, workload, load, SLO, and seed.
