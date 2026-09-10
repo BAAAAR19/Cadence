@@ -59,6 +59,41 @@ class ContinuousScheduler(BaseScheduler):
         self.running: list[Live] = []
         self.metrics.kv_blocks_total.set(self.blocks.n_blocks)
 
+    # --- state for admission ----------------------------------------------
+    def kv_free_frac(self) -> float:
+        n = self.blocks.n_blocks
+        return self.blocks.free_blocks() / n if n else 1.0
+
+    def probe_prefix(self, prompt_ids: list[int]) -> int:
+        """How many of this prompt's tokens the cache already holds.
+
+        Called from the API thread, at admission, purely as a *feature*: a
+        request that hits a 600-token system prompt skips its prefill and is
+        seconds faster than one that does not, and a predictor that cannot see
+        that is predicting the wrong distribution.
+
+        Best-effort on purpose. It counts nothing, pins nothing and allocates
+        nothing, so the worst a concurrent mutation on the engine thread can do
+        is hand back a number that was true a moment ago -- or, in the Python
+        reference, raise while walking a tree that is being rewritten under it.
+        Both are answered with a slightly wrong feature, which is the same
+        order of error as the snapshot's, and neither can corrupt the cache,
+        because this path never takes a reference. Locking the cache for every
+        arrival -- including the arrivals that are about to be refused -- would
+        put admission on the engine thread's critical path to buy a feature
+        two per cent more accurate.
+
+        (The C++ core needs none of that care: pybind11 holds the GIL for the
+        whole of ``match``, so it is already atomic with respect to the engine
+        thread. The try/except is for the Python reference, which is not.)
+        """
+        if self.prefix is None:
+            return 0
+        try:
+            return int(self.prefix.match(prompt_ids, count=False).n_tokens)
+        except Exception:
+            return 0
+
     # --- owner-sequence bookkeeping ---------------------------------------
     def _release_owner_seq(self, seq_id: int) -> None:
         self.runner.free(seq_id)
@@ -350,6 +385,9 @@ class ContinuousScheduler(BaseScheduler):
             self._intake()
             prefill, decode = self._schedule()
             self.n_running = len(self.running)
+            self.st_sum_remaining = sum(
+                max(0, lv.rq.max_tokens - len(lv.rq.output_ids)) for lv in self.running
+            )
             self._gauges()
 
             if not prefill and not decode:
@@ -357,6 +395,7 @@ class ContinuousScheduler(BaseScheduler):
                 continue
 
             t0 = time.perf_counter()
+            n_before = sum(len(lv.rq.output_ids) for lv in self.running)
             order = (
                 [("prefill", prefill), ("decode", decode)]
                 if self.cfg.prefill_priority
@@ -380,7 +419,13 @@ class ContinuousScheduler(BaseScheduler):
             except Exception as exc:
                 self._abort(exc)
                 continue
-            self.metrics.step_latency.observe(time.perf_counter() - t0)
+            dt = time.perf_counter() - t0
+            self.metrics.step_latency.observe(dt)
+            # Tokens this step actually produced, counted over the sequences
+            # that survived it -- a retired sequence took its tokens with it,
+            # which understates the rate by at most one token per completion.
+            n_after = sum(len(lv.rq.output_ids) for lv in self.running)
+            self._observe_step(dt, max(0, n_after - n_before))
             self._update_kv_gauges()
 
     def _do_prefill(self, group: list[Live]) -> None:

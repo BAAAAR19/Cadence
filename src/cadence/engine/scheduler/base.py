@@ -11,6 +11,7 @@ lock-protected deque, and tokens cross back out through
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from collections import deque
@@ -19,6 +20,36 @@ from typing import Any
 
 from cadence.engine.backends.base import DetokenizerState, SeqState
 from cadence.engine.request import Request, State
+
+
+@dataclass(frozen=True, slots=True)
+class Snapshot:
+    """System state as admission sees it, at one instant.
+
+    Week 4's feature vector is half request and half this. It is a frozen
+    dataclass rather than the ``stats()`` dict because the predictor is fitted
+    on these fields by name: a typo in a dict key would train a model on a
+    column of NaN and still run.
+
+    Read from the API thread, written by the engine thread, and deliberately
+    not locked. Every field is a scalar whose write is a single bytecode, so a
+    reader sees old or new and never a torn value; what it can see is a *set*
+    of fields that were never simultaneously true -- ``batch_size`` from after
+    a step and ``queue_depth`` from before it. That costs the predictor a
+    little accuracy on one feature of one request, which is noise of the same
+    kind as the measurement itself. A lock would put the API thread on the
+    engine thread's critical path to buy nothing, and admission has to be
+    cheap: it runs on every arrival, including the ones that are about to be
+    refused.
+    """
+
+    queue_depth: int = 0
+    batch_size: int = 0
+    sum_remaining_tokens: int = 0
+    kv_free_frac: float = 1.0
+    ewma_step_latency_s: float = 0.0
+    ewma_tokens_per_s: float = 0.0
+    arrival_rate: float = 0.0
 
 
 class SeqIdPool:
@@ -82,6 +113,13 @@ class BaseScheduler:
         self.n_waiting = 0
         self.n_running = 0
 
+        # --- state the admission controller reads (see Snapshot) ----------
+        self.st_sum_remaining = 0
+        self.st_ewma_step_s = 0.0
+        self.st_ewma_tokens_per_s = 0.0
+        self._arrival_rate = 0.0
+        self._last_arrival_t = 0.0
+
     # --- lifecycle --------------------------------------------------------
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, name="cadence-engine", daemon=True)
@@ -92,6 +130,81 @@ class BaseScheduler:
         self._wake.set()
         if self._thread is not None:
             self._thread.join(timeout)
+
+    # --- state for admission ---------------------------------------------
+    ARRIVAL_TAU_S = 10.0
+    """Time constant of the arrival-rate estimator. Ten seconds is roughly
+    twenty arrivals at the loads this project runs at -- long enough for the
+    estimate not to be dominated by one exponential gap, short enough to track
+    a step change in offered load within the warm-up window."""
+
+    EWMA_ALPHA = 0.1
+    """Weight on the newest engine step. The step rate is 20-80 Hz, so this is
+    an average over roughly the last quarter-second of work."""
+
+    def note_arrival(self) -> None:
+        """One request arrived at the gateway. Called from the API thread,
+        *before* the admission decision, so the rate this estimates is offered
+        load rather than admitted load -- a controller that measured only what
+        it let in would see its own shedding as the arrival rate falling.
+
+        The estimator is an exponentially-decaying rate rather than an EWMA of
+        inter-arrival gaps: 1/gap has infinite mean for a Poisson process, so
+        averaging it is dominated by whichever gap happened to be smallest.
+        """
+        now = time.perf_counter()
+        prev, self._last_arrival_t = self._last_arrival_t, now
+        if prev == 0.0:
+            self._arrival_rate = 1.0 / self.ARRIVAL_TAU_S
+            return
+        dt = max(0.0, now - prev)
+        self._arrival_rate = (
+            self._arrival_rate * math.exp(-dt / self.ARRIVAL_TAU_S) + 1.0 / self.ARRIVAL_TAU_S
+        )
+
+    def _observe_step(self, dt: float, n_tokens: int) -> None:
+        """One engine step took ``dt`` seconds and produced ``n_tokens``.
+
+        Both EWMAs are what makes the predictor's system-state features about
+        *this* machine under *this* load rather than about the workload alone:
+        the same queue depth means something different at 12 ms per step than
+        at 50 ms.
+        """
+        a = self.EWMA_ALPHA
+        self.st_ewma_step_s = (1 - a) * self.st_ewma_step_s + a * dt if self.st_ewma_step_s else dt
+        if dt > 0:
+            tps = n_tokens / dt
+            self.st_ewma_tokens_per_s = (
+                (1 - a) * self.st_ewma_tokens_per_s + a * tps
+                if self.st_ewma_tokens_per_s
+                else tps
+            )
+
+    def snapshot(self) -> Snapshot:
+        """The system half of the admission feature vector."""
+        return Snapshot(
+            queue_depth=self.n_waiting,
+            batch_size=self.n_running,
+            sum_remaining_tokens=self.st_sum_remaining,
+            kv_free_frac=self.kv_free_frac(),
+            ewma_step_latency_s=self.st_ewma_step_s,
+            ewma_tokens_per_s=self.st_ewma_tokens_per_s,
+            arrival_rate=self._arrival_rate,
+        )
+
+    def kv_free_frac(self) -> float:
+        """Fraction of the KV pool not currently allocated. Rungs 1-3 run the
+        contiguous allocator through the backend and do not track it, so they
+        report a full pool rather than a wrong number."""
+        return 1.0
+
+    def probe_prefix(self, prompt_ids: list[int]) -> int:
+        """Prompt tokens a prefix cache would serve, if there is one.
+
+        Zero everywhere except the continuous scheduler; see the override
+        there for why the answer is best-effort.
+        """
+        return 0
 
     def submit(self, rq: Request) -> None:
         """Called from the API event loop. The only cross-thread entry point."""
@@ -209,4 +322,8 @@ class BaseScheduler:
             "waiting": self.n_waiting,
             "running": self.n_running,
             "seq_ids_free": self.seq_ids.available,
+            "sum_remaining_tokens": self.st_sum_remaining,
+            "ewma_step_latency_s": self.st_ewma_step_s,
+            "ewma_tokens_per_s": self.st_ewma_tokens_per_s,
+            "arrival_rate": self._arrival_rate,
         }

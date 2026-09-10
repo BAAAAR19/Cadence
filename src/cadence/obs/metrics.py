@@ -71,6 +71,32 @@ preemptions = Counter(
     "cadence_preemptions_total", "Sequences preempted", _L + ["policy"], registry=REGISTRY
 )
 shed_total = Counter("cadence_shed_total", "Requests shed", _L + ["reason"], registry=REGISTRY)
+
+# --- Week 4: admission control ------------------------------------------
+# The bound and the decision cost are histograms because both have a tail that
+# matters: a controller whose p99 decision costs 40 ms has moved the queue it
+# is trying to protect.
+admission_bound_seconds = Histogram(
+    "cadence_admission_bound_seconds",
+    "Conformal upper bound on end-to-end latency, at the moment of the decision",
+    _L, buckets=LAT_BUCKETS, registry=REGISTRY,
+)
+admission_decision_seconds = Histogram(
+    "cadence_admission_decision_seconds",
+    "Wall time spent deciding whether to admit",
+    _L, buckets=(1e-4, 2.5e-4, 5e-4, 1e-3, 2.5e-3, 5e-3, 1e-2, 2.5e-2, 5e-2),
+    registry=REGISTRY,
+)
+admission_q_seconds = Gauge(
+    "cadence_admission_conformal_q_seconds",
+    "The calibration correction Q currently added to the model's upper quantile",
+    _L, registry=REGISTRY,
+)
+admission_alpha = Gauge(
+    "cadence_admission_alpha",
+    "Working miscoverage level; constant except under adaptive conformal inference",
+    _L, registry=REGISTRY,
+)
 slo_met_total = Counter(
     "cadence_slo_met_total", "Requests completing within the SLO", _L, registry=REGISTRY
 )
@@ -112,6 +138,14 @@ class Metrics:
         self.prefix_query_tokens = prefix_query_tokens.labels(**lb)
         self.slo_met_total = slo_met_total.labels(**lb)
         self.cow_total = cow_total.labels(**lb)
+        # Bound here rather than in the controller, so that a label set exists
+        # from process start: a child that is only created on the first shed
+        # is a panel that is empty until the first shed, which is the moment
+        # you least want to be wondering whether the metric is broken.
+        self.admission_bound = admission_bound_seconds.labels(**lb)
+        self.admission_decision = admission_decision_seconds.labels(**lb)
+        self.admission_q = admission_q_seconds.labels(**lb)
+        self.admission_alpha = admission_alpha.labels(**lb)
         self._preemptions = preemptions
         self._shed = shed_total
         self._requests = requests_total

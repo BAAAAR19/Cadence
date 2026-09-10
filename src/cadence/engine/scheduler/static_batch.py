@@ -66,6 +66,7 @@ class StaticBatchScheduler(BaseScheduler):
 
     def _run_wave(self, wave: list[Live]) -> None:
         self.n_running = len(wave)
+        self.st_sum_remaining = sum(lv.rq.max_tokens for lv in wave)
         self._gauges()
         active = list(wave)
         try:
@@ -84,7 +85,9 @@ class StaticBatchScheduler(BaseScheduler):
             while still and not self._stop.is_set():
                 t0 = time.perf_counter()
                 toks = self.runner.decode_step([lv.seq for lv in still])
-                self.metrics.step_latency.observe(time.perf_counter() - t0)
+                dt = time.perf_counter() - t0
+                self._observe_step(dt, len(still))
+                self.metrics.step_latency.observe(dt)
                 nxt: list[Live] = []
                 for lv, tok in zip(still, toks, strict=True):
                     (nxt if self._emit(lv, tok) else done).append(lv)

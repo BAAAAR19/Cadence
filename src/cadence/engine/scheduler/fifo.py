@@ -33,6 +33,7 @@ class FifoScheduler(BaseScheduler):
 
             rq = self.queue.popleft()
             self.n_waiting = len(self.queue)
+            self.st_sum_remaining = rq.max_tokens
             if rq.cancelled:
                 continue
             self._serve(rq)
@@ -54,6 +55,7 @@ class FifoScheduler(BaseScheduler):
         try:
             t0 = time.perf_counter()
             tok = self.runner.prefill([live.seq])[0]
+            self._observe_step(time.perf_counter() - t0, 1)
             self.metrics.step_latency.observe(time.perf_counter() - t0)
             self.metrics.tokens("prefill", len(rq.prompt_ids))
             self.metrics.prefill_batch.observe(1)
@@ -62,7 +64,9 @@ class FifoScheduler(BaseScheduler):
             while cont and not self._stop.is_set():
                 t0 = time.perf_counter()
                 tok = self.runner.decode_step([live.seq])[0]
-                self.metrics.step_latency.observe(time.perf_counter() - t0)
+                dt = time.perf_counter() - t0
+                self._observe_step(dt, 1)
+                self.metrics.step_latency.observe(dt)
                 cont = self._emit(live, tok)
             if len(rq.output_ids) >= rq.max_tokens:
                 reason = "length"

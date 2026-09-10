@@ -96,10 +96,42 @@ class Settings(BaseSettings):
     code the moment the extension lands.
     """
 
-    # --- SLO / admission (Week 4 makes admission interesting) ------------
+    # --- SLO / admission -------------------------------------------------
     slo_s: float = 2.0
     admission: Literal["none", "conformal"] = "none"
     retry_after_s: float = 1.0
+    """Floor for the ``Retry-After`` header on a 503. The conformal controller
+    raises it to its estimate of when capacity will exist."""
+
+    admission_model: str = "models/admission.pkl"
+    """The fitted quantile regressor and its calibration scores; see
+    ``bench/fit_predictor.py`` and ``cadence.admission.artifact``."""
+    admission_alpha: float = 0.0
+    """Target miscoverage. 0 means "whatever the model was calibrated at",
+    which is the honest default: overriding it here recalibrates the bound at a
+    level the reported coverage plot was not drawn for, so the override exists
+    for the safety-versus-goodput sweep and is recorded in the run's meta."""
+    admission_mode: Literal["static", "rolling", "aci"] = "static"
+    """static: the offline split-conformal bound, which is the one with the
+    finite-sample guarantee. rolling: recalibrate on the most recent
+    completions. aci: adaptive conformal inference. The last two exist because
+    the controller's own shedding breaks the exchangeability the first one
+    assumes; see cadence.admission.conformal."""
+    admission_safety: float = 1.0
+    """Multiplier on the bound before it is compared with the budget. Kept at 1
+    for the headline runs -- a tuned fudge factor with no measurement behind it
+    is a red flag -- and swept in the writeup."""
+    admission_hysteresis: float = 0.9
+    """While shedding, the bound must fit inside this fraction of the SLO
+    before admitting resumes. Damps the shed / admit oscillation."""
+    admission_window: int = 512
+    admission_refresh: int = 16
+    admission_aci_gamma: float = 0.005
+
+    trace_log: str | None = None
+    """JSONL of one row per request -- admission features, then outcome. This
+    is how the training set for the predictor is collected; unset means no
+    trace is written and no feature vector is extracted."""
 
     # --- observability --------------------------------------------------
     metrics_enabled: bool = True
