@@ -129,6 +129,14 @@ COMMON: dict[str, str] = {
     "CADENCE_MAX_TOKENS_CAP": "512",
     "CADENCE_METRICS_ENABLED": "true",
     "CADENCE_TRACING_ENABLED": "false",
+    # The API layer's hard concurrency cap, pinned far above anything a rung
+    # will reach rather than left at the default. It is a memory bound for a
+    # deployment (see cadence.api.lifecycle), and in a benchmark it is a
+    # confound: FIFO at 4 rps holds ~700 requests open at once, so a cap
+    # anywhere near that would make the most overloaded rungs a measurement of
+    # the cap instead of the scheduler. Pinned here so that changing the
+    # default for a deployment can never silently change the ladder.
+    "CADENCE_MAX_CONCURRENT_REQUESTS": "8192",
 }
 
 

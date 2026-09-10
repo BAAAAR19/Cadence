@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import signal
 import subprocess
@@ -85,6 +86,75 @@ class Gateway:
                 self.proc.wait(timeout=20)
             except subprocess.TimeoutExpired:
                 self.proc.kill()
+
+
+CANARY_PROMPT = (
+    "Recite the first eight prime numbers, one per line, with no commentary."
+)
+CANARY_TOKENS = 64
+
+
+def canary(base: str, model: str, timeout_s: float = 120.0) -> dict:
+    """A fixed single-stream generation on an idle server, timed.
+
+    The build guide's advice for a laptop benchmark is to run ``powermetrics``
+    alongside the sweep and discard runs whose clocks sagged. That needs root,
+    which a reproduction script should not, so this measures the same thing
+    from the inside: an identical prompt, an identical token count, greedy
+    sampling, issued to an idle engine immediately before each measured run.
+    Its decode rate is a direct reading of how fast this machine is *right
+    now*.
+
+    What it is for is not calibration -- it is the covariate that tells a
+    reader whether a difference between two rungs could have been the
+    machine. A ladder in which rung 5 was measured at 62 tok/s and rung 1 at
+    78 is not a ladder, however carefully the rungs were rotated, and without
+    a probe like this there is no way to know that happened. It is recorded on
+    every run and reported with the results rather than used to silently drop
+    anything.
+
+    Measured from the *second* token to the last, so prefill and the
+    first-token latency are excluded and the number is decode throughput
+    alone.
+    """
+    body = {
+        "model": model,
+        "stream": True,
+        "max_tokens": CANARY_TOKENS,
+        "temperature": 0.0,
+        "messages": [{"role": "user", "content": CANARY_PROMPT}],
+    }
+    t_first = t_last = None
+    n = 0
+    t0 = time.perf_counter()
+    try:
+        with httpx.stream("POST", f"{base}/v1/chat/completions", json=body,
+                          timeout=timeout_s) as r:
+            if r.status_code != 200:
+                r.read()
+                return {"ok": False, "status": r.status_code}
+            for line in r.iter_lines():
+                if not line.startswith("data: ") or line == "data: [DONE]":
+                    continue
+                chunk = json.loads(line[6:])
+                if not chunk["choices"][0]["delta"].get("content"):
+                    continue
+                now = time.perf_counter()
+                if t_first is None:
+                    t_first = now
+                t_last = now
+                n += 1
+    except Exception as exc:  # pragma: no cover - a probe must not end a sweep
+        return {"ok": False, "error": type(exc).__name__}
+    if n < 2 or t_first is None or t_last is None or t_last <= t_first:
+        return {"ok": False, "n_tokens": n}
+    return {
+        "ok": True,
+        "n_tokens": n,
+        "ttft_s": t_first - t0,
+        "decode_s": t_last - t_first,
+        "tok_per_s": (n - 1) / (t_last - t_first),
+    }
 
 
 def warm(base: str, model: str) -> None:
