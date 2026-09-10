@@ -146,6 +146,29 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
+    max_concurrent_requests: int = 2048
+    """Hard ceiling on requests in the API layer at once, enforced before the
+    admission controller sees them. This is a memory bound and not a
+    scheduling decision: an OOM kill invalidates every SLO claim in the
+    project, so the cap exists to make that failure mode unreachable. Set far
+    above anything the controller will admit -- if this is what is shedding,
+    something upstream has already gone wrong, and
+    ``cadence_shed_total{reason="capacity"}`` says so.
+
+    The default is high for a reason worth stating: the most overloaded rung
+    of the ablation ladder (FIFO at 4 rps, where the client waits up to 300 s)
+    holds around 700 requests open at once, and a cap below that would make
+    the ladder a measurement of the cap. The benchmark harness pins its own
+    value anyway (``bench/configs.py``); a deployment should set this from the
+    memory it actually has."""
+
+    drain_grace_s: float = 60.0
+    """On SIGTERM the process stops being ready at once and keeps streaming
+    what it already accepted, for at most this long. Sized for the longest
+    generation the server will produce (``max_tokens_cap`` tokens at the
+    loaded batch's token rate), not guessed: a grace period shorter than one
+    response turns every rolling restart into a burst of truncated streams."""
+
     @model_validator(mode="after")
     def _prefill_budget_fits_the_batch(self) -> Settings:
         """``max_prefill_tokens`` is the number of prompt tokens one engine
