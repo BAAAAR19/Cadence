@@ -1,0 +1,90 @@
+{"rung": "fifo", "rate": 0.6, "seed": 0, "t": "2026-09-10T07:01:57+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04325458299717866, "decode_s": 0.22752358399156947, "tok_per_s": 92.29812413986113}
+{"rung": "fifo", "rate": 0.6, "seed": 1, "t": "2026-09-10T07:05:03+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04944791599700693, "decode_s": 0.22556337500282098, "tok_per_s": 93.10022072394229}
+{"rung": "fifo", "rate": 0.6, "seed": 2, "t": "2026-09-10T07:08:09+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04234391599311493, "decode_s": 0.22179500000493135, "tok_per_s": 94.68202619325544}
+{"rung": "static", "rate": 0.6, "seed": 0, "t": "2026-09-10T07:11:13+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.10604658299416769, "decode_s": 0.24843020799744409, "tok_per_s": 84.53078298842004}
+{"rung": "static", "rate": 0.6, "seed": 1, "t": "2026-09-10T07:14:19+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.10910124999645632, "decode_s": 0.2526424579991726, "tok_per_s": 83.1214205494659}
+{"rung": "static", "rate": 0.6, "seed": 2, "t": "2026-09-10T07:17:25+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.10956379200797528, "decode_s": 0.23221191599441227, "tok_per_s": 90.43463557875869}
+{"rung": "continuous", "rate": 0.6, "seed": 0, "t": "2026-09-10T07:20:29+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.045400957998936065, "decode_s": 0.250587959002587, "tok_per_s": 83.80290930013601}
+{"rung": "continuous", "rate": 0.6, "seed": 1, "t": "2026-09-10T07:23:34+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04070645899628289, "decode_s": 0.24106012500124052, "tok_per_s": 87.11519584540136}
+{"rung": "continuous", "rate": 0.6, "seed": 2, "t": "2026-09-10T07:26:40+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.045127917008358054, "decode_s": 0.2416898749943357, "tok_per_s": 86.88820746211302}
+{"rung": "continuous+cache", "rate": 0.6, "seed": 0, "t": "2026-09-10T07:29:44+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.045481584005756304, "decode_s": 0.24566283299645875, "tok_per_s": 85.48301647365076}
+{"rung": "continuous+cache", "rate": 0.6, "seed": 1, "t": "2026-09-10T07:32:49+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04514849999395665, "decode_s": 0.22368141601327807, "tok_per_s": 93.88352583905946}
+{"rung": "continuous+cache", "rate": 0.6, "seed": 2, "t": "2026-09-10T07:35:55+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.039682916991296224, "decode_s": 0.23793491700780578, "tok_per_s": 88.25942936030303}
+{"rung": "continuous+cache+admission", "rate": 0.6, "seed": 0, "t": "2026-09-10T07:39:00+00:00", "ok": false, "status": 503}
+{"rung": "continuous+cache+admission", "rate": 0.6, "seed": 1, "t": "2026-09-10T07:42:05+00:00", "ok": false, "status": 503}
+{"rung": "continuous+cache+admission", "rate": 0.6, "seed": 2, "t": "2026-09-10T07:45:11+00:00", "ok": false, "status": 503}
+{"rung": "static", "rate": 1.0, "seed": 0, "t": "2026-09-10T07:48:14+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.10612154201953672, "decode_s": 0.24443316599354148, "tok_per_s": 85.91305486160937}
+{"rung": "static", "rate": 1.0, "seed": 1, "t": "2026-09-10T07:51:21+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.10916037499555387, "decode_s": 0.25203137498465367, "tok_per_s": 83.32295929932812}
+{"rung": "static", "rate": 1.0, "seed": 2, "t": "2026-09-10T07:54:25+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.11031529199681245, "decode_s": 0.25792633299715817, "tok_per_s": 81.41859637197796}
+{"rung": "continuous", "rate": 1.0, "seed": 0, "t": "2026-09-10T07:57:32+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04696337500354275, "decode_s": 0.24844437499996275, "tok_per_s": 84.52596280355773}
+{"rung": "continuous", "rate": 1.0, "seed": 1, "t": "2026-09-10T08:00:38+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04470524998032488, "decode_s": 0.24715420801658183, "tok_per_s": 84.9671958593199}
+{"rung": "continuous", "rate": 1.0, "seed": 2, "t": "2026-09-10T08:03:41+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.0440147920162417, "decode_s": 0.2422051249886863, "tok_per_s": 86.70336765574608}
+{"rung": "continuous+cache", "rate": 1.0, "seed": 0, "t": "2026-09-10T08:06:46+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.03594366600736976, "decode_s": 0.22802983401925303, "tok_per_s": 92.09321267245639}
+{"rung": "continuous+cache", "rate": 1.0, "seed": 1, "t": "2026-09-10T08:09:52+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.044797166978241876, "decode_s": 0.23159679200034589, "tok_per_s": 90.67483110892415}
+{"rung": "continuous+cache", "rate": 1.0, "seed": 2, "t": "2026-09-10T08:12:55+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04016133400727995, "decode_s": 0.22862529099802487, "tok_per_s": 91.85335492992952}
+{"rung": "continuous+cache+admission", "rate": 1.0, "seed": 0, "t": "2026-09-10T08:16:02+00:00", "ok": false, "status": 503}
+{"rung": "continuous+cache+admission", "rate": 1.0, "seed": 1, "t": "2026-09-10T08:19:07+00:00", "ok": false, "status": 503}
+{"rung": "continuous+cache+admission", "rate": 1.0, "seed": 2, "t": "2026-09-10T08:22:11+00:00", "ok": false, "status": 503}
+{"rung": "fifo", "rate": 1.0, "seed": 0, "t": "2026-09-10T08:25:13+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.048561417002929375, "decode_s": 0.2306021660042461, "tok_per_s": 91.06592693328528}
+{"rung": "fifo", "rate": 1.0, "seed": 1, "t": "2026-09-10T08:29:05+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04280345898587257, "decode_s": 0.24564908299362287, "tok_per_s": 85.48780131430479}
+{"rung": "fifo", "rate": 1.0, "seed": 2, "t": "2026-09-10T08:32:15+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.044410834001610056, "decode_s": 0.23891504100174643, "tok_per_s": 87.89735427267006}
+{"rung": "continuous", "rate": 1.4, "seed": 0, "t": "2026-09-10T08:36:26+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04541895800502971, "decode_s": 0.2438980000151787, "tok_per_s": 86.10156704316185}
+{"rung": "continuous", "rate": 1.4, "seed": 1, "t": "2026-09-10T08:39:50+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04786387499189004, "decode_s": 0.2512243330129422, "tok_per_s": 83.5906289336955}
+{"rung": "continuous", "rate": 1.4, "seed": 2, "t": "2026-09-10T08:42:53+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04098000001977198, "decode_s": 0.2420229169947561, "tok_per_s": 86.76864265897187}
+{"rung": "continuous+cache", "rate": 1.4, "seed": 0, "t": "2026-09-10T08:46:23+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04565708400332369, "decode_s": 0.2375175829802174, "tok_per_s": 88.41450698725352}
+{"rung": "continuous+cache", "rate": 1.4, "seed": 1, "t": "2026-09-10T08:49:26+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04638479198911227, "decode_s": 0.24485120800090954, "tok_per_s": 85.76637285743753}
+{"rung": "continuous+cache", "rate": 1.4, "seed": 2, "t": "2026-09-10T08:52:29+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.042567833996145055, "decode_s": 0.2406501660007052, "tok_per_s": 87.26360072379282}
+{"rung": "continuous+cache+admission", "rate": 1.4, "seed": 0, "t": "2026-09-10T08:55:37+00:00", "ok": false, "status": 503}
+{"rung": "continuous+cache+admission", "rate": 1.4, "seed": 1, "t": "2026-09-10T08:58:41+00:00", "ok": false, "status": 503}
+{"rung": "continuous+cache+admission", "rate": 1.4, "seed": 2, "t": "2026-09-10T09:01:45+00:00", "ok": false, "status": 503}
+{"rung": "fifo", "rate": 1.4, "seed": 0, "t": "2026-09-10T09:04:48+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04444095800863579, "decode_s": 0.2465877500071656, "tok_per_s": 85.16238134047519}
+{"rung": "fifo", "rate": 1.4, "seed": 1, "t": "2026-09-10T09:10:23+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.0441232500015758, "decode_s": 0.2444984579924494, "tok_per_s": 85.89011224213333}
+{"rung": "fifo", "rate": 1.4, "seed": 2, "t": "2026-09-10T09:14:25+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.045665791985811666, "decode_s": 0.2448530830151867, "tok_per_s": 85.76571608329515}
+{"rung": "static", "rate": 1.4, "seed": 0, "t": "2026-09-10T09:19:52+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.10503979100030847, "decode_s": 0.25633312499849126, "tok_per_s": 81.9246439574425}
+{"rung": "static", "rate": 1.4, "seed": 1, "t": "2026-09-10T09:23:41+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.10361437499523163, "decode_s": 0.24873179200221784, "tok_per_s": 84.42829053317298}
+{"rung": "static", "rate": 1.4, "seed": 2, "t": "2026-09-10T09:26:45+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.10916391600039788, "decode_s": 0.24862570900586434, "tok_per_s": 84.4643141852425}
+{"rung": "continuous+cache", "rate": 1.9, "seed": 0, "t": "2026-09-10T09:30:46+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.0427239999989979, "decode_s": 0.2429492920055054, "tok_per_s": 86.43779048149737}
+{"rung": "continuous+cache", "rate": 1.9, "seed": 1, "t": "2026-09-10T09:33:50+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.044204791978700086, "decode_s": 0.24496304101194255, "tok_per_s": 85.72721792336093}
+{"rung": "continuous+cache", "rate": 1.9, "seed": 2, "t": "2026-09-10T09:37:04+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04426004199194722, "decode_s": 0.24969008300104178, "tok_per_s": 84.10426136112254}
+{"rung": "continuous+cache+admission", "rate": 1.9, "seed": 0, "t": "2026-09-10T09:40:16+00:00", "ok": false, "status": 503}
+{"rung": "continuous+cache+admission", "rate": 1.9, "seed": 1, "t": "2026-09-10T09:43:19+00:00", "ok": false, "status": 503}
+{"rung": "continuous+cache+admission", "rate": 1.9, "seed": 2, "t": "2026-09-10T09:46:22+00:00", "ok": false, "status": 503}
+{"rung": "fifo", "rate": 1.9, "seed": 0, "t": "2026-09-10T09:49:25+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04355395899619907, "decode_s": 0.2507454580045305, "tok_per_s": 83.7502707611181}
+{"rung": "fifo", "rate": 1.9, "seed": 1, "t": "2026-09-10T09:56:31+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.046394583012443036, "decode_s": 0.24695904200780205, "tok_per_s": 85.03434346549076}
+{"rung": "fifo", "rate": 1.9, "seed": 2, "t": "2026-09-10T10:02:24+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04330920800566673, "decode_s": 0.23927083300077356, "tok_per_s": 87.76665227697062}
+{"rung": "static", "rate": 1.9, "seed": 0, "t": "2026-09-10T10:09:29+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.11032425001030788, "decode_s": 0.24871695798356086, "tok_per_s": 84.4333260194828}
+{"rung": "static", "rate": 1.9, "seed": 1, "t": "2026-09-10T10:14:29+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.10390566600835882, "decode_s": 0.2554774169984739, "tok_per_s": 82.19904618859303}
+{"rung": "static", "rate": 1.9, "seed": 2, "t": "2026-09-10T10:18:50+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.10590012499596924, "decode_s": 0.2558430409990251, "tok_per_s": 82.08157594593328}
+{"rung": "continuous", "rate": 1.9, "seed": 0, "t": "2026-09-10T10:24:14+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.046273707994259894, "decode_s": 0.2500133749854285, "tok_per_s": 83.99550624531163}
+{"rung": "continuous", "rate": 1.9, "seed": 1, "t": "2026-09-10T10:28:46+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04018262500176206, "decode_s": 0.2407611660019029, "tok_per_s": 87.2233689042444}
+{"rung": "continuous", "rate": 1.9, "seed": 2, "t": "2026-09-10T10:32:43+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.044215125002665445, "decode_s": 0.24438341599307023, "tok_per_s": 85.93054448750107}
+{"rung": "continuous+cache+admission", "rate": 2.6, "seed": 0, "t": "2026-09-10T10:37:21+00:00", "ok": false, "status": 503}
+{"rung": "continuous+cache+admission", "rate": 2.6, "seed": 1, "t": "2026-09-10T10:40:24+00:00", "ok": false, "status": 503}
+{"rung": "continuous+cache+admission", "rate": 2.6, "seed": 2, "t": "2026-09-10T10:43:27+00:00", "ok": false, "status": 503}
+{"rung": "fifo", "rate": 2.6, "seed": 0, "t": "2026-09-10T10:46:30+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04261541701271199, "decode_s": 0.24519354099174961, "tok_per_s": 85.64662802723102}
+{"rung": "fifo", "rate": 2.6, "seed": 1, "t": "2026-09-10T10:54:31+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.047568667010637, "decode_s": 0.24757845801650546, "tok_per_s": 84.82159622546797}
+{"rung": "fifo", "rate": 2.6, "seed": 2, "t": "2026-09-10T11:02:34+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.041972957988036796, "decode_s": 0.23921891700592823, "tok_per_s": 87.78569965467901}
+{"rung": "static", "rate": 2.6, "seed": 0, "t": "2026-09-10T11:10:37+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.10629037499893457, "decode_s": 0.2567390420008451, "tok_per_s": 81.79511708207932}
+{"rung": "static", "rate": 2.6, "seed": 1, "t": "2026-09-10T11:17:35+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.10878170898649842, "decode_s": 0.25765250000404194, "tok_per_s": 81.50512802969334}
+{"rung": "static", "rate": 2.6, "seed": 2, "t": "2026-09-10T11:23:53+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.10442620801040903, "decode_s": 0.24308483398635872, "tok_per_s": 86.3895935242857}
+{"rung": "continuous", "rate": 2.6, "seed": 0, "t": "2026-09-10T11:30:53+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04384145900257863, "decode_s": 0.24375662501552142, "tok_per_s": 86.1515045946456}
+{"rung": "continuous", "rate": 2.6, "seed": 1, "t": "2026-09-10T11:37:06+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04368320797220804, "decode_s": 0.2473570000147447, "tok_per_s": 84.89753675355139}
+{"rung": "continuous", "rate": 2.6, "seed": 2, "t": "2026-09-10T11:42:51+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04524216600111686, "decode_s": 0.23780004199943505, "tok_per_s": 88.30948818776865}
+{"rung": "continuous+cache", "rate": 2.6, "seed": 0, "t": "2026-09-10T11:49:01+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.046190875000320375, "decode_s": 0.24920841699349694, "tok_per_s": 84.26681672051227}
+{"rung": "continuous+cache", "rate": 2.6, "seed": 1, "t": "2026-09-10T11:52:11+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.046857040986651555, "decode_s": 0.25070295901969075, "tok_per_s": 83.7644680466281}
+{"rung": "continuous+cache", "rate": 2.6, "seed": 2, "t": "2026-09-10T11:55:25+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.043080959003418684, "decode_s": 0.24885620799614117, "tok_per_s": 84.38608049643524}
+{"rung": "fifo", "rate": 4.0, "seed": 0, "t": "2026-09-10T11:58:31+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.046002083021448925, "decode_s": 0.24348379200091586, "tok_per_s": 86.24804069061406}
+{"rung": "fifo", "rate": 4.0, "seed": 1, "t": "2026-09-10T12:06:33+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04596945800585672, "decode_s": 0.25003870800719596, "tok_per_s": 83.98699612299882}
+{"rung": "fifo", "rate": 4.0, "seed": 2, "t": "2026-09-10T12:14:36+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04519495801650919, "decode_s": 0.24281450000125915, "tok_per_s": 86.48577411930137}
+{"rung": "static", "rate": 4.0, "seed": 0, "t": "2026-09-10T12:22:40+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.10562804198707454, "decode_s": 0.24850116702145897, "tok_per_s": 84.50664538805395}
+{"rung": "static", "rate": 4.0, "seed": 1, "t": "2026-09-10T12:30:43+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.1041510829818435, "decode_s": 0.25038345900247805, "tok_per_s": 83.87135509535462}
+{"rung": "static", "rate": 4.0, "seed": 2, "t": "2026-09-10T12:38:46+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.1230065829877276, "decode_s": 0.25257037501432933, "tok_per_s": 83.14514320536834}
+{"rung": "continuous", "rate": 4.0, "seed": 0, "t": "2026-09-10T12:46:54+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04988108400721103, "decode_s": 0.23817737499484792, "tok_per_s": 88.16958369977105}
+{"rung": "continuous", "rate": 4.0, "seed": 1, "t": "2026-09-10T12:55:00+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.03786608300288208, "decode_s": 0.25380062498152256, "tok_per_s": 82.74211303273529}
+{"rung": "continuous", "rate": 4.0, "seed": 2, "t": "2026-09-10T13:03:11+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.047332583024399355, "decode_s": 0.24684874998638406, "tok_per_s": 85.07233681012498}
+{"rung": "continuous+cache", "rate": 4.0, "seed": 0, "t": "2026-09-10T13:11:22+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.046258166985353455, "decode_s": 0.2512657500046771, "tok_per_s": 83.57685040483672}
+{"rung": "continuous+cache", "rate": 4.0, "seed": 1, "t": "2026-09-10T13:15:40+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04481749999104068, "decode_s": 0.24576729099499062, "tok_per_s": 85.44668379173385}
+{"rung": "continuous+cache", "rate": 4.0, "seed": 2, "t": "2026-09-10T13:19:57+00:00", "ok": true, "n_tokens": 22, "ttft_s": 0.04425241699209437, "decode_s": 0.2396013330144342, "tok_per_s": 87.64558917848302}
+{"rung": "continuous+cache+admission", "rate": 4.0, "seed": 0, "t": "2026-09-10T13:24:26+00:00", "ok": false, "status": 503}
+{"rung": "continuous+cache+admission", "rate": 4.0, "seed": 1, "t": "2026-09-10T13:27:30+00:00", "ok": false, "status": 503}
+{"rung": "continuous+cache+admission", "rate": 4.0, "seed": 2, "t": "2026-09-10T13:30:33+00:00", "ok": false, "status": 503}
