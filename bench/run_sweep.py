@@ -132,6 +132,9 @@ def main(argv=None) -> None:
     extra = dict(kv.split("=", 1) for kv in a.set)
     label = a.label or a.config
     env = env_for(a.config, extra)
+    # See bench/run_ladder.py: the gateway needs the same SLO the harness is
+    # measuring against, because the admission controller enforces it.
+    env.setdefault("CADENCE_SLO_S", str(a.slo))
     env["CADENCE_CONFIG_NAME"] = label
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)

@@ -67,6 +67,43 @@ RUNGS: dict[str, dict[str, str]] = {
         "CADENCE_ENABLE_PAGED_KV": "true",
         "CADENCE_ENABLE_PREFIX_CACHE": "true",
         "CADENCE_ADMISSION": "conformal",
+        "CADENCE_ADMISSION_MODE": "static",
+    },
+    # The same bound, read at a weaker guarantee. Alpha is the policy's real
+    # knob -- it is the strength of the promise made about each admitted
+    # request -- and it is a rung rather than a knob sweep because the two
+    # points bracket the trade-off the week exists to measure: at 0.01 the
+    # controller refuses anything whose 99th percentile does not fit, which on
+    # this workload is nearly everything; at 0.20 it refuses anything whose
+    # 80th percentile does not.
+    "continuous+cache+admission-a05": {
+        "CADENCE_SCHEDULER": "continuous",
+        "CADENCE_ENABLE_PAGED_KV": "true",
+        "CADENCE_ENABLE_PREFIX_CACHE": "true",
+        "CADENCE_ADMISSION": "conformal",
+        "CADENCE_ADMISSION_MODE": "static",
+        "CADENCE_ADMISSION_ALPHA": "0.05",
+    },
+    "continuous+cache+admission-a20": {
+        "CADENCE_SCHEDULER": "continuous",
+        "CADENCE_ENABLE_PAGED_KV": "true",
+        "CADENCE_ENABLE_PREFIX_CACHE": "true",
+        "CADENCE_ADMISSION": "conformal",
+        "CADENCE_ADMISSION_MODE": "static",
+        "CADENCE_ADMISSION_ALPHA": "0.2",
+    },
+    # The same controller, recalibrating on its own recent completions instead
+    # of holding the offline calibration set fixed. It is a separate rung and
+    # not a knob sweep because the two answer different questions: the static
+    # arm is the one with the finite-sample guarantee, and this one is the
+    # answer to the fact that the controller's own shedding breaks the
+    # assumption that guarantee rests on. Both are measured.
+    "continuous+cache+admission-rolling": {
+        "CADENCE_SCHEDULER": "continuous",
+        "CADENCE_ENABLE_PAGED_KV": "true",
+        "CADENCE_ENABLE_PREFIX_CACHE": "true",
+        "CADENCE_ADMISSION": "conformal",
+        "CADENCE_ADMISSION_MODE": "rolling",
     },
 }
 

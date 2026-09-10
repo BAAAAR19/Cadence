@@ -47,6 +47,11 @@ def main(argv=None) -> None:
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--outdir", required=True)
     p.add_argument("--set", action="append", default=[])
+    p.add_argument("--trace-dir", default=None,
+                   help="write one admission trace per (rung, rate, seed) here. "
+                        "Rung 5 needs it to report the coverage its bound actually "
+                        "achieved while it was deciding; rung 4 with it on is how "
+                        "the training set was collected in the first place.")
     a = p.parse_args(argv)
 
     rungs = [c for c in a.configs.split(",") if c]
@@ -71,6 +76,7 @@ def main(argv=None) -> None:
                 # provenance.
                 "src_hash": source_hash(),
                 "rungs": {r: env_for(r, extra) for r in rungs},
+                "trace_dir": a.trace_dir,
                 "rates": rates,
                 "seeds": seeds,
                 "duration_s": a.duration,
@@ -95,6 +101,22 @@ def main(argv=None) -> None:
         for rung in order:
             for seed in seeds:
                 env = env_for(rung, extra)
+                # The server's own SLO, not just the load generator's. Until
+                # Week 4 the two could differ harmlessly -- the gateway used
+                # it only for a Prometheus counter and for an EDF ordering
+                # that a constant SLO leaves unchanged -- but the admission
+                # controller compares its bound against *this* value, so a
+                # sweep whose harness measures a 4 s target while the
+                # controller enforces the 2 s default would report a
+                # controller that sheds nearly everything, for a reason
+                # nowhere in the results.
+                env.setdefault("CADENCE_SLO_S", str(a.slo))
+                if a.trace_dir:
+                    tdir = Path(a.trace_dir)
+                    tdir.mkdir(parents=True, exist_ok=True)
+                    env["CADENCE_TRACE_LOG"] = str(
+                        tdir / f"{rung.replace('+', '_')}_rate{rate:g}_seed{seed}.jsonl"
+                    )
                 log = outdir / f"{rung.replace('+', '_')}.server.log"
                 with Gateway(env, a.port, log) as gw:
                     warm(gw.base, "qwen")

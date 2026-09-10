@@ -86,6 +86,14 @@ async def one_request(client, url, payload, t_intended, results, slo_s, timeout_
                 await r.aread()
                 rec["retry_after"] = float(r.headers.get("Retry-After", "nan"))
                 rec["e2e"] = time.perf_counter() - t_intended
+                # Set here as well as on the success path, and not only for
+                # tidiness: until Week 4 nothing was ever shed, so a run in
+                # which *every* request is refused produced a frame with no
+                # `ok` column at all and every consumer of it raised
+                # AttributeError. A 503 is a request that did not succeed, so
+                # it says so.
+                rec["ok"] = False
+                rec["met_slo"] = False
                 results.append(rec)
                 return
             last = None
