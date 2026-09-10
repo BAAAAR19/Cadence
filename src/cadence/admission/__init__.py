@@ -1,3 +1,17 @@
-from cadence.admission.controller import Decision, PassThroughController, build_controller
+from cadence.admission.controller import (
+    Decision,
+    PassThroughController,
+    QueueCapController,
+    build_controller,
+)
+from cadence.admission.features import FEATURES, AdmitContext, extract
 
-__all__ = ["Decision", "PassThroughController", "build_controller"]
+__all__ = [
+    "FEATURES",
+    "AdmitContext",
+    "Decision",
+    "PassThroughController",
+    "QueueCapController",
+    "build_controller",
+    "extract",
+]
