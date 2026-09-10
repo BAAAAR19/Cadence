@@ -27,6 +27,15 @@ TABLES = {
     "ADMISSION": "admission.md",
     "COVERAGE": "coverage.md",
     "PREDICTOR": "predictor.md",
+    # Week 5.
+    "ABLATION": "ablation.md",
+    "ARMS": "admission_arms.md",
+    "SPREAD": "spread.md",
+    "TRADEOFFS": "tradeoffs.md",
+    "THERMAL": "thermal.md",
+    "ANCHOR": "block_anchor.md",
+    "SESSION": "session_check.md",
+    "DRAIN": "drain.md",
 }
 
 
@@ -63,6 +72,7 @@ def main(argv=None) -> None:
                 f"`uv run bench/make_report.py results/w2_ladder --slo 4.0 --outdir docs`, "
                 f"`uv run bench/core_report.py`, "
                 f"`uv run bench/w4_report.py results/w4_admission`, "
+                f"`bash bench/report_week5.sh`, "
                 f"then `uv run bench/embed_tables.py`"
             )
         print(f"{readme} is up to date")

@@ -46,12 +46,25 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from analyze import load, summarize  # noqa: E402
 from charts import COLOURS, LABELS, _style, itl_histogram  # noqa: E402
-from w5_report import RUNGS, per_seed, saturation  # noqa: E402
+from w5_report import ARMS, RUNGS, per_seed, saturation  # noqa: E402
+from w5_report import LABELS as W5_LABELS  # noqa: E402
+
+LABELS.update(W5_LABELS)
 
 
-def _order(s: pd.DataFrame) -> list[str]:
+def _order(s: pd.DataFrame, only_rungs: bool = True) -> list[str]:
+    """The five rungs, in ladder order.
+
+    ``only_rungs`` keeps the headline figures to five lines. The other two
+    admission arms are a different question -- how the guarantee level trades
+    against goodput -- and get their own figure rather than three more lines
+    on this one.
+    """
     seen = list(dict.fromkeys(s.config))
-    return [c for c in RUNGS if c in seen] + [c for c in seen if c not in RUNGS]
+    out = [c for c in RUNGS if c in seen]
+    if not only_rungs:
+        out += [c for c in seen if c not in out]
+    return out
 
 
 def _band(ax, s: pd.DataFrame, cfg: str, metric: str, **kw) -> None:
@@ -233,9 +246,45 @@ def ttft_ccdf(df: pd.DataFrame, out: Path, rate: float, slo: float) -> None:
 # --- entry point -----------------------------------------------------------
 
 
+def admission_arms(s: pd.DataFrame, out: Path, slo: float, sat: float) -> None:
+    """Rung 5 at three guarantee levels, against rung 4.
+
+    The point of the figure is the row of the table that has no line on it:
+    at alpha=0.01 the controller admits nothing at any load, so its goodput
+    is the x axis. A 99% promise is one this system cannot keep, and the
+    honest bound says so by fitting nothing.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.0), sharex=True)
+    shown = ["continuous+cache"] + [a for a in ARMS if a in set(s.config)]
+    for cfg in shown:
+        _band(axes[0], s, cfg, "goodput_rps")
+        _band(axes[1], s, cfg, "e2e_p99")
+    _saturation_marks(axes[0], sat, None)
+    _saturation_marks(axes[1], sat, slo)
+    axes[1].set_yscale("log")
+    _style(
+        axes[0], "offered load (requests/s)", f"goodput (requests/s within {slo:g}s)",
+        "Goodput by guarantee level",
+        "alpha is the strength of the promise made about each admitted\n"
+        "request -- the only real knob the policy has",
+    )
+    _style(
+        axes[1], "offered load (requests/s)", "p99 end-to-end (s, log scale)",
+        "What the promise buys",
+        "a tighter guarantee admits less and holds a tighter tail;\n"
+        "at 99% it admits nothing at all",
+    )
+    axes[0].legend(fontsize=8.5, frameon=False, loc="upper left")
+    fig.tight_layout()
+    fig.savefig(out, dpi=160)
+    plt.close(fig)
+
+
 def main(argv=None) -> None:
     p = argparse.ArgumentParser()
     p.add_argument("paths", nargs="+")
+    p.add_argument("--r5", default=None,
+                   help="the second block: the rung-5 arms plus the rung-4 anchor")
     p.add_argument("--slo", type=float, default=4.0)
     p.add_argument("--outdir", default="docs/figs/w5")
     p.add_argument("--fit", default=None, help="results/w4_fit, for the coverage figure")
@@ -247,10 +296,20 @@ def main(argv=None) -> None:
     out.mkdir(parents=True, exist_ok=True)
     df = load(a.paths)
     s = summarize(df, slo_s=a.slo)
+    if a.r5:
+        # Rung 4 stays the copy measured alongside rungs 1-3; only the arms
+        # are taken from the second block. See w5_report.anchor_table for how
+        # much the difference between the two blocks is worth.
+        df_r5 = load([a.r5])
+        df_r5 = df_r5[df_r5.config.isin(ARMS)]
+        df = pd.concat([df, df_r5], ignore_index=True)
+        s = pd.concat([s, summarize(df_r5, slo_s=a.slo)], ignore_index=True)
 
     _, _, sat = saturation(s, "continuous+cache")
     p99_vs_load(s, out / "p99_vs_load.png", a.slo, sat)
     goodput_vs_load(s, out / "goodput_vs_load.png", a.slo, sat)
+
+    admission_arms(s, out / "admission_arms.png", a.slo, sat)
 
     rate = a.dist_rate if a.dist_rate is not None else sat
     ttft_ccdf(df, out / "ttft_itl_distributions.png", float(rate), a.slo)

@@ -36,26 +36,44 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from analyze import load, summarize  # noqa: E402
 
+# Rung 5 is the alpha=0.20 arm, and that is a choice with a reason rather
+# than a tuning. Alpha is the strength of the promise the controller makes
+# about each admitted request, and it is the policy's only real knob. At
+# alpha=0.01 -- a 99% guarantee -- the honest bound on this workload fits
+# nothing, so the controller refuses 100% of arrivals even at 0.6 rps with an
+# idle engine. That is measured here on three seeds and reported as the
+# negative result it is (see ARMS below and docs/admission_arms.md), but a
+# rung that serves nothing is not a rung. The alpha=0.20 arm is the one that
+# makes the ladder's fifth claim, and alpha=0.05 brackets it.
 RUNGS = [
     "fifo",
     "static",
     "continuous",
     "continuous+cache",
+    "continuous+cache+admission-a20",
+]
+ARMS = [
     "continuous+cache+admission",
+    "continuous+cache+admission-a05",
+    "continuous+cache+admission-a20",
 ]
 LABELS = {
     "fifo": "1  FIFO, no batching",
     "static": "2  static batching (8)",
     "continuous": "3  continuous batching",
     "continuous+cache": "4  + paged KV + prefix cache",
-    "continuous+cache+admission": "5  + conformal admission",
+    "continuous+cache+admission-a20": "5  + conformal admission (80%)",
+    "continuous+cache+admission-a05": "5  + conformal admission (95%)",
+    "continuous+cache+admission": "5  + conformal admission (99%)",
 }
 ISOLATES = {
     "fifo": "the baseline everything is measured against",
     "static": "the cost of head-of-line blocking",
     "continuous": "iteration-level scheduling",
     "continuous+cache": "memory efficiency and prompt reuse",
-    "continuous+cache+admission": "tail-latency control under overload",
+    "continuous+cache+admission-a20": "tail-latency control under overload",
+    "continuous+cache+admission-a05": "the same control, promised harder",
+    "continuous+cache+admission": "the same control, promised harder still",
 }
 
 
@@ -319,11 +337,104 @@ def tradeoff_table(s: pd.DataFrame, slo: float) -> tuple[str, list[dict]]:
     return "\n".join(lines), found
 
 
-def thermal_table(canary_path: Path) -> tuple[str, dict]:
+def arms_table(s: pd.DataFrame, slo: float) -> str:
+    """Rung 5 at three guarantee levels, against rung 4.
+
+    Alpha is not a hyperparameter to be tuned until the numbers look good; it
+    is the strength of the promise the controller makes about each request it
+    admits, and it is a product decision. Reporting one alpha would present a
+    choice as a result. Reporting three shows the trade-off the choice is
+    made along -- and includes the level at which the honest answer is "this
+    system cannot promise that", which is the most informative row in the
+    table.
+    """
+    base = "continuous+cache"
+    order = [base] + [a for a in ARMS if a in set(s.config)]
+    rates = sorted(s.rate_rps.unique())
+    lines = [
+        "| Config | " + " | ".join(f"{r:g} rps" for r in rates) + " |",
+        "|:--|" + "--:|" * len(rates),
+    ]
+
+    def block(metric: str, fmt, title: str) -> None:
+        lines.append(f"| **{title}** |" + " |" * len(rates))
+        for cfg in order:
+            g = per_seed(s[s.config == cfg], metric).set_index("rate_rps")["mean"]
+            cells = [fmt(g.get(r, float("nan"))) for r in rates]
+            lines.append(f"| {LABELS.get(cfg, cfg)} | " + " | ".join(cells) + " |")
+
+    block("goodput_rps", lambda v: _f(v, 2), f"Goodput (rps within {slo:g}s)")
+    block("e2e_p99", lambda v: _f(v, 1), "p99 end-to-end (s)")
+    block("shed_rate", _pct, "Refused (503)")
+    block("slo_attainment_admitted",
+          lambda v: _pct(v), "SLO attainment among admitted")
+
+    lines.append("")
+    lines.append(
+        f"Mean over three seeds. The last block is the promise the controller "
+        f"actually kept: of the requests it chose to admit, how many finished "
+        f"inside {slo:g}s. The row above it is what that cost."
+    )
+    return "\n".join(lines)
+
+
+def anchor_table(main: pd.DataFrame, second: pd.DataFrame, slo: float) -> tuple[str, dict]:
+    """How much of a difference is "it was measured later"?
+
+    Rungs 1 to 4 and rung 5 were measured in two blocks, hours apart, because
+    the first block's rung 5 turned out to be the arm that refuses
+    everything. Running the replacement on its own breaks the rate-major
+    rotation that protects the ladder from drift, so rung 4 was run again
+    alongside it, unchanged, as an anchor. The difference between the two
+    copies of rung 4 is the size of the block effect, measured in the same
+    metric the ladder is compared in, rather than an assurance that there
+    was not one.
+    """
+    cfg = "continuous+cache"
+    rates = sorted(set(main[main.config == cfg].rate_rps) & set(second[second.config == cfg].rate_rps))
+    if not rates:
+        return "", {}
+    lines = [
+        "| offered (rps) | metric | block 1 (rungs 1-5, alpha 0.01) | block 2 (rung 5 arms) | |",
+        "|--:|:--|--:|--:|--:|",
+    ]
+    deltas = []
+    for metric, name, nd in (("e2e_p99", "p99 end-to-end (s)", 1),
+                             ("goodput_rps", "goodput (rps)", 2)):
+        a = per_seed(main[main.config == cfg], metric).set_index("rate_rps")["mean"]
+        b = per_seed(second[second.config == cfg], metric).set_index("rate_rps")["mean"]
+        for r in rates:
+            if not (np.isfinite(a.get(r, np.nan)) and np.isfinite(b.get(r, np.nan))):
+                continue
+            d = (b[r] - a[r]) / a[r] if a[r] else float("nan")
+            if metric == "e2e_p99":
+                deltas.append(abs(d))
+            lines.append(
+                f"| {r:g} | {name} | {a[r]:.{nd}f} | {b[r]:.{nd}f} | {d:+.0%} |"
+            )
+    worst = max(deltas) if deltas else float("nan")
+    lines.append("")
+    lines.append(
+        f"Rung 4, run twice: once interleaved with rungs 1-3, once "
+        f"interleaved with the rung-5 arms hours later, with everything else "
+        f"identical. The largest disagreement in p99 end-to-end is "
+        f"{100 * worst:.0f}%. Any cross-block comparison in the ladder -- which "
+        f"means every comparison involving rung 5 -- should be read with that "
+        f"as its noise floor. Differences smaller than it are not results."
+    )
+    return "\n".join(lines), {"worst_p99_delta": float(worst), "rates": rates}
+
+
+def thermal_table(canary_paths: list[Path]) -> tuple[str, dict]:
     """What the machine was doing underneath the ladder."""
-    if not canary_path.exists():
+    if not canary_paths:
         return "No thermal probe was recorded for this sweep.\n", {}
-    recs = [json.loads(line) for line in canary_path.open() if line.strip()]
+    recs = [
+        json.loads(line)
+        for path in canary_paths
+        for line in path.open()
+        if line.strip()
+    ]
     ok = [r for r in recs if r.get("ok")]
     if not ok:
         return "The thermal probe ran but produced no usable readings.\n", {}
@@ -375,6 +486,45 @@ def thermal_table(canary_path: Path) -> tuple[str, dict]:
     }
 
 
+def drain_table(path: Path) -> tuple[str, dict]:
+    """What the drain actually did, from bench/demo_drain.py --json-out."""
+    if not path.exists():
+        return "", {}
+    d = json.loads(path.read_text())
+    inflight = d.get("inflight", [])
+    clean = [r for r in inflight if r.get("finish") in {"stop", "length"}]
+    after = [r for r in inflight if r.get("t_done", 0.0) > d.get("t_signal", 0.0)]
+    lines = [
+        "| What SIGTERM did | Measured |",
+        "|:--|:--|",
+        f"| `/ready` before the signal | {d.get('ready_before_signal')} |",
+        f"| `/ready` after the signal | 503 after "
+        f"{1e3 * d['unready_after_s']:.0f} ms |"
+        if d.get("unready_after_s") is not None
+        else "| `/ready` after the signal | never went 503 |",
+        f"| a request arriving mid-drain | {d.get('late_status')} with "
+        f"`Retry-After: {d.get('late_retry_after')}` |",
+        f"| streams in flight when it landed | {len(inflight)} |",
+        f"| of those, still running at the signal | {len(after)} |",
+        f"| of those, finished with a real `finish_reason` | {len(clean)} |",
+        f"| truncated | {len(inflight) - len(clean)} |",
+        f"| wall time from signal to exit | {d.get('drain_wall_s', float('nan')):.2f}s |",
+    ]
+    lines.append("")
+    lines.append(
+        "One run of `uv run bench/demo_drain.py`, which exits non-zero if any "
+        "row above comes out wrong -- including if every stream had already "
+        "finished when the signal landed, since that would mean nothing was "
+        "drained."
+    )
+    return "\n".join(lines), {
+        "streams": len(inflight),
+        "finished_cleanly": len(clean),
+        "running_at_signal": len(after),
+        "unready_after_s": d.get("unready_after_s"),
+    }
+
+
 def session_check(s: pd.DataFrame, w2_paths: list[str], slo: float) -> str:
     """Does the rung the two sessions share still measure the same thing?
 
@@ -416,6 +566,8 @@ def session_check(s: pd.DataFrame, w2_paths: list[str], slo: float) -> str:
 def main(argv=None) -> None:
     p = argparse.ArgumentParser()
     p.add_argument("paths", nargs="+", help="the Week 5 ladder results directory")
+    p.add_argument("--r5", default=None,
+                   help="the second block: the rung-5 arms plus the rung-4 anchor")
     p.add_argument("--slo", type=float, default=4.0)
     p.add_argument("--outdir", default="docs")
     p.add_argument("--w2", default=None, help="Week 2's ladder, for the session check")
@@ -429,7 +581,21 @@ def main(argv=None) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
 
     df = load(a.paths)
-    s = summarize(df, slo_s=a.slo)
+    s_main = summarize(df, slo_s=a.slo)
+
+    # Two blocks. Rungs 1-4 come from the first, where they were interleaved
+    # with each other; rung 5's usable arms come from the second. Rung 4 was
+    # run in both, and the copy used everywhere except the anchor table is
+    # the first one -- the one measured alongside the rungs it is compared
+    # with.
+    s, s_r5 = s_main, None
+    if a.r5:
+        df_r5 = load([a.r5])
+        s_r5 = summarize(df_r5, slo_s=a.slo)
+        keep = s_r5[s_r5.config.isin(ARMS)]
+        s = pd.concat([s_main, keep], ignore_index=True)
+        df = pd.concat([df, df_r5[df_r5.config.isin(ARMS)]], ignore_index=True)
+
     hits = (
         df.groupby(["config", "rate_rps"]).prefix_hit_rate_server.last()
         if "prefix_hit_rate_server" in df
@@ -442,8 +608,18 @@ def main(argv=None) -> None:
     trade, found = tradeoff_table(s, a.slo)
     (outdir / "tradeoffs.md").write_text(trade + "\n")
 
-    canary_path = Path(a.paths[0]) / "canary.jsonl"
-    thermal, thermal_meta = thermal_table(canary_path)
+    (outdir / "admission_arms.md").write_text(arms_table(s, a.slo) + "\n")
+
+    anchor_meta: dict = {}
+    if s_r5 is not None:
+        anchor, anchor_meta = anchor_table(s_main, s_r5, a.slo)
+        if anchor:
+            (outdir / "block_anchor.md").write_text(anchor + "\n")
+
+    canary_paths = [Path(pp) / "canary.jsonl" for pp in a.paths]
+    if a.r5:
+        canary_paths.append(Path(a.r5) / "canary.jsonl")
+    thermal, thermal_meta = thermal_table([p for p in canary_paths if p.exists()])
     (outdir / "thermal.md").write_text(thermal + "\n")
 
     if a.w2:
@@ -457,17 +633,13 @@ def main(argv=None) -> None:
     head["n_runs"] = int(len(s))
     head["slo_s"] = a.slo
     head["thermal"] = thermal_meta
+    head["block_anchor"] = anchor_meta
     head["n_tradeoffs"] = len(found)
-    if a.drain and Path(a.drain).exists():
-        d = json.loads(Path(a.drain).read_text())
-        head["drain"] = {
-            "unready_after_s": d.get("unready_after_s"),
-            "streams_finished_cleanly": sum(
-                1 for r in d.get("inflight", []) if r.get("finish") in {"stop", "length"}
-            ),
-            "streams": len(d.get("inflight", [])),
-            "late_status": d.get("late_status"),
-        }
+    if a.drain:
+        drain, drain_meta = drain_table(Path(a.drain))
+        if drain:
+            (outdir / "drain.md").write_text(drain + "\n")
+            head["drain"] = drain_meta
     if a.fit and (Path(a.fit) / "fit.json").exists():
         fit = json.loads((Path(a.fit) / "fit.json").read_text())
         head["predictor"] = {
