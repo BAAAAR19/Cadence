@@ -1,0 +1,11 @@
+{
+  "continuous+cache+admission-a20": {
+    "nominal": 0.8,
+    "empirical": 1.0,
+    "n": 201,
+    "n_censored": 0,
+    "n_violations": 0,
+    "mean_bound_s": 2.4902323204508345,
+    "mean_e2e_s": 0.8864002659597894
+  }
+}
