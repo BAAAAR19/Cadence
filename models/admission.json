@@ -1,0 +1,38 @@
+{
+  "format_version": 1,
+  "alpha": 0.01,
+  "score": "ratio",
+  "feature_names": [
+    "n_prompt_tokens",
+    "n_cached_prefix_tokens",
+    "n_new_prefill_tokens",
+    "max_tokens",
+    "log_max_tokens",
+    "n_messages",
+    "has_shared_system_prompt",
+    "queue_depth",
+    "running_batch_size",
+    "sum_remaining_tokens",
+    "kv_blocks_free_frac",
+    "ewma_step_latency_s",
+    "ewma_tokens_per_s"
+  ],
+  "calib_score_quantiles": {
+    "0.5": -0.31061778979793786,
+    "0.9": 0.17360725545672073,
+    "0.99": 0.7002796979639444,
+    "1.0": 1.1343089474760844
+  },
+  "src_hash": "b756dc1c695b",
+  "base_alpha": 0.2,
+  "traces": [
+    "results/w4_traces"
+  ],
+  "n_train": 1470,
+  "n_calib": 721,
+  "slo_s": 4.0,
+  "test_coverage": 0.9972527472527473,
+  "test_mean_bound_s": 21.744379310927382,
+  "saved": "2026-09-09T22:36:17+00:00",
+  "sklearn_version": "1.9.0"
+}
