@@ -1,0 +1,122 @@
+# Cadence on Fly.io.
+#
+#   fly launch --no-deploy --copy-config --config deploy/fly.toml
+#   fly deploy --config deploy/fly.toml --dockerfile deploy/Dockerfile
+#
+# One machine, CPU only, weights baked into the image. Everything below that
+# is not boilerplate is a consequence of something measured elsewhere in this
+# repository, and is commented where that is not obvious.
+
+app = "cadence-gateway"
+primary_region = "iad"
+
+# SIGTERM, then wait. The 95 s covers CADENCE_DRAIN_GRACE_S below: the process
+# is given at least as long to finish its streams as it is configured to take,
+# so a kill is a bug rather than a race. See the DrainingServer in
+# cadence/api/app.py for what happens in between.
+kill_signal = "SIGTERM"
+kill_timeout = "95s"
+
+[build]
+  dockerfile = "deploy/Dockerfile"
+
+[env]
+  CADENCE_CONFIG_NAME = "fly"
+  CADENCE_HOST = "0.0.0.0"
+  CADENCE_PORT = "8000"
+  CADENCE_BACKEND = "llamacpp"
+  CADENCE_SCHEDULER = "continuous"
+  CADENCE_ENABLE_PAGED_KV = "true"
+  CADENCE_ENABLE_PREFIX_CACHE = "true"
+  CADENCE_KV_CORE = "auto"
+
+  # 8192 KV cells, not the 16384 the laptop sweeps use: this machine has 4 GB
+  # for the model, the KV pool and the process, and the pool is the part that
+  # scales with concurrency. Sized down deliberately rather than inherited.
+  CADENCE_N_CTX = "8192"
+  CADENCE_N_BATCH = "512"
+  CADENCE_N_PARALLEL = "32"
+  CADENCE_MAX_BATCH = "12"
+  CADENCE_MAX_PREFILL_TOKENS = "512"
+  CADENCE_BLOCK_SIZE = "16"
+  CADENCE_MAX_TOKENS_CAP = "512"
+
+  # The two operational bounds from cadence/api/lifecycle.py. The cap is a
+  # memory bound: ~1.5 KB of tokenised prompt and bookkeeping per accepted
+  # request, so 256 is well under a megabyte and still far above anything four
+  # CPUs will get through. The grace period covers the longest generation this
+  # server will produce, so a rolling restart finishes its streams instead of
+  # truncating them.
+  CADENCE_MAX_CONCURRENT_REQUESTS = "256"
+  CADENCE_DRAIN_GRACE_S = "90"
+
+  # Off, and this is the honest setting rather than a missing feature.
+  #
+  # The committed artifact (models/admission.pkl) was calibrated on llama.cpp
+  # with Metal on an M-series laptop. A split-conformal bound is a statement
+  # about exchangeability with its calibration set and nothing else, so on
+  # four shared vCPUs -- where the same request takes several times longer --
+  # that artifact is not a conservative bound, it is an arbitrary one. Turned
+  # on regardless, it sheds essentially everything at zero load, which looks
+  # exactly like correct overload behaviour and is not.
+  #
+  # The gateway says so at start-up: cadence.admission.conformal_controller
+  # compares the artifact's calibration fingerprint against the running
+  # backend. To enable admission control here, collect and fit *on this
+  # machine* -- see deploy/README.md, "Calibrating admission for a
+  # deployment" -- and set this to `conformal`.
+  CADENCE_ADMISSION = "none"
+  CADENCE_SLO_S = "4.0"
+
+  CADENCE_METRICS_ENABLED = "true"
+  CADENCE_TRACING_ENABLED = "false"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Never. A gateway that scales to zero pays a model load on the first
+  # request after every idle period, and a 30-second cold start is a latency
+  # outlier in exactly the tail this project is about. If the demo has to be
+  # cheap, stop the machine rather than let it flap.
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+
+  # Below the in-process cap, so the proxy queues rather than the process
+  # refusing -- and well below it, because a request sitting in Fly's queue is
+  # a request whose latency is already running.
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 48
+    hard_limit = 96
+
+  # Readiness. This is the check that decides whether traffic is routed here,
+  # so it points at /ready: 503 while the model loads, 200 once the engine has
+  # completed its warm-up generation, 503 again the moment SIGTERM arrives.
+  # A 5-second interval means a draining machine leaves rotation in about the
+  # time it takes to finish one response.
+  [[http_service.checks]]
+    interval = "5s"
+    timeout = "2s"
+    grace_period = "60s"
+    method = "GET"
+    path = "/ready"
+
+# Liveness, deliberately a different endpoint and a different question.
+# /health stays 200 while draining; restarting a process for being mid-drain
+# is fighting the drain. This check exists to catch a wedged engine thread,
+# not a busy one, so its grace period covers the model load.
+[checks]
+  [checks.alive]
+    type = "http"
+    port = 8000
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "90s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  cpu_kind = "performance"
+  cpus = 4
+  memory = "4gb"

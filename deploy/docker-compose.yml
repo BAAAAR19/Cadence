@@ -3,8 +3,12 @@
 #   docker compose -f deploy/docker-compose.yml up --build
 #   open http://localhost:3000   (anonymous admin; the Cadence dashboard is provisioned)
 #
-# The model is mounted from ./models rather than baked into the image: a 500 MB
-# layer in a demo image is a tax on everyone who clones the repo.
+# The image bakes the weights (deploy/Dockerfile fetches and checksums the
+# GGUF at build time, because a model pulled on boot is a cold start that
+# scales with the network). ./models is still mounted over it here: if you
+# already have the file, the mount means the build does not spend five
+# minutes downloading a copy you have, and it is also how a locally refitted
+# admission artifact reaches the container.
 services:
   gateway:
     build:
@@ -29,13 +33,27 @@ services:
       CADENCE_TRACING_ENABLED: "true"
       CADENCE_OTLP_ENDPOINT: http://otel-collector:4317
       CADENCE_SLO_S: "2.0"
+      # See deploy/fly.toml for why admission stays off outside the machine
+      # its predictor was calibrated on. The gateway warns at start-up if it
+      # is turned on with a mismatched artifact.
+      CADENCE_ADMISSION: "none"
+      CADENCE_MAX_CONCURRENT_REQUESTS: "256"
+      CADENCE_DRAIN_GRACE_S: "90"
     depends_on:
       - otel-collector
+    # Readiness, not liveness: compose should call this container healthy only
+    # once the model is loaded and the engine has warmed up, which is what
+    # /ready answers. /health is 200 within a second of start and would mark
+    # it healthy roughly half a minute too early.
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/ready"]
+      interval: 5s
+      timeout: 3s
       retries: 30
+      start_period: 20s
+    # The drain in cadence/api/app.py needs the signal and needs the time.
+    stop_signal: SIGTERM
+    stop_grace_period: 95s
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.109.0
