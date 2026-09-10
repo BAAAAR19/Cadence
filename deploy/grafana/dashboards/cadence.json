@@ -586,6 +586,189 @@
     },
     {
       "type": "timeseries",
+      "title": "Admission: the conformal bound",
+      "description": "U(x) at the moment of each decision, and the calibration correction Q currently added to the model's upper quantile. Requests whose bound sits above the SLO line are the ones being refused.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cadence-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 35
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le, config) (rate(cadence_admission_bound_seconds_bucket[30s])))",
+          "legendFormat": "p50 {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, config) (rate(cadence_admission_bound_seconds_bucket[30s])))",
+          "legendFormat": "p99 {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "B"
+        },
+        {
+          "expr": "cadence_admission_conformal_q_seconds",
+          "legendFormat": "Q {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Admission: decisions",
+      "description": "Shed rate against completions. A sawtooth here is the shed/admit feedback loop oscillating; the controller's hysteresis exists to prevent it. The working alpha moves only under adaptive conformal inference.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cadence-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 35
+      },
+      "targets": [
+        {
+          "expr": "sum by (config, reason) (rate(cadence_shed_total[30s]))",
+          "legendFormat": "shed {{reason}} {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (config) (rate(cadence_requests_total{state=\"done\"}[30s]))",
+          "legendFormat": "admitted and completed {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "B"
+        },
+        {
+          "expr": "cadence_admission_alpha",
+          "legendFormat": "working alpha {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Admission: decision cost",
+      "description": "Feature extraction plus two gradient-boosted quantile predictions, on the request path. Every millisecond here is TTFT for a request that was going to be admitted anyway, so it is measured rather than assumed small.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "cadence-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 42
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le, config) (rate(cadence_admission_decision_seconds_bucket[30s])))",
+          "legendFormat": "p50 {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, config) (rate(cadence_admission_decision_seconds_bucket[30s])))",
+          "legendFormat": "p99 {{config}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "cadence-prom"
+          },
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
       "title": "Token throughput",
       "description": "",
       "datasource": {
@@ -596,7 +779,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 35
+        "y": 49
       },
       "targets": [
         {

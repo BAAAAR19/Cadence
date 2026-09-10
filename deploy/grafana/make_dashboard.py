@@ -166,6 +166,46 @@ def build() -> dict:
     y += 7
     panels += [
         panel(
+            "Admission: the conformal bound",
+            hist("cadence_admission_bound_seconds", (0.5, 0.99))
+            + [q("cadence_admission_conformal_q_seconds", "Q {{config}}")],
+            0, y,
+            desc="U(x) at the moment of each decision, and the calibration "
+                 "correction Q currently added to the model's upper quantile. "
+                 "Requests whose bound sits above the SLO line are the ones "
+                 "being refused.",
+        ),
+        panel(
+            "Admission: decisions",
+            [
+                q("sum by (config, reason) (rate(cadence_shed_total[30s]))",
+                  "shed {{reason}} {{config}}"),
+                q("sum by (config) (rate(cadence_requests_total{state=\"done\"}[30s]))",
+                  "admitted and completed {{config}}"),
+                q("cadence_admission_alpha", "working alpha {{config}}"),
+            ],
+            12, y, unit="reqps",
+            desc="Shed rate against completions. A sawtooth here is the "
+                 "shed/admit feedback loop oscillating; the controller's "
+                 "hysteresis exists to prevent it. The working alpha moves "
+                 "only under adaptive conformal inference.",
+        ),
+    ]
+    y += 7
+    panels += [
+        panel(
+            "Admission: decision cost",
+            hist("cadence_admission_decision_seconds", (0.5, 0.99)),
+            0, y, w=24,
+            desc="Feature extraction plus two gradient-boosted quantile "
+                 "predictions, on the request path. Every millisecond here is "
+                 "TTFT for a request that was going to be admitted anyway, so "
+                 "it is measured rather than assumed small.",
+        )
+    ]
+    y += 7
+    panels += [
+        panel(
             "Token throughput",
             [q("sum by (config, kind) (rate(cadence_tokens_total[30s]))", "{{kind}} {{config}}")],
             0, y, w=24, unit="short", stack=True,
