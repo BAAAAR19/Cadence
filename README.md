@@ -11,30 +11,43 @@ prefix reuse, and conformal admission control.**
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-OpenAI--compatible-009688?logo=fastapi&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-150%20passing-23a67a)
+![Tests](https://img.shields.io/badge/tests-168%20passing-23a67a)
 ![License](https://img.shields.io/badge/license-MIT-23a67a)
 
-[Quick start](#quick-start) · [Measured results](#results) · [Methodology](#methodology) · [Admission control](#week-4-predicting-latency-and-refusing-work-on-a-guarantee) · [Contributing](CONTRIBUTING.md)
+[Quick start](#quick-start) · [The ablation ladder](#the-ablation-ladder-1) · [Methodology](#methodology) · [Admission control](#week-4-predicting-latency-and-refusing-work-on-a-guarantee) · [Deploy](deploy/README.md) · [Five-minute demo](docs/demo.md)
 
 </div>
 
-> **Status: Weeks 0–4 of five are complete.** Shipped: the OpenAI-compatible
-> streaming gateway, the open-loop measurement harness, the systems core
-> (iteration-level scheduling, paged KV, radix prefix cache, metrics and
-> tracing), the C++17 port of the two KV data structures behind pybind11, and
-> the latency predictor with split-conformal admission control. Week 5 —
-> multiple seeds, one interleaved five-rung sweep, and a CI load gate — is
-> what remains. See [Roadmap](#roadmap).
+> **Status: complete.** Weeks 0–5: the OpenAI-compatible streaming gateway,
+> the open-loop measurement harness, the systems core (iteration-level
+> scheduling, paged KV, radix prefix cache, metrics and tracing), the C++17
+> port of the two KV data structures behind pybind11, the latency predictor
+> with split-conformal admission control, and the five-rung ablation with
+> three seeds, a CI load gate that has been shown to go red, and a
+> deployable image. See [Roadmap](#roadmap).
 >
-> **Week 4's headline: at six times the load where this configuration's
-> goodput peaks, p99 end-to-end is 2.4 s against a 4 s SLO, where the same
-> system without admission control is at 203.6 s and delivers nothing inside
-> the SLO at all.** Goodput past saturation is 4.6× the unmanaged system's.
-> The bound's coverage is measured rather than asserted, at four levels, and
-> the week's two most interesting findings are failures: a feature that is
-> valid for prediction and invalid for control, and a 99% guarantee that is
-> unattainable against this SLO and says so by refusing every request. See
-> [Week 4](#week-4-predicting-latency-and-refusing-work-on-a-guarantee).
+> **The headline, from the five-rung ladder: at 4 rps — 2.9× the offered load
+> at which this system's goodput peaks without admission control — the
+> conformal controller holds p99 end-to-end at 2.3 s against a 4 s SLO and
+> delivers 1.62 rps of goodput, where the same system without it is at 90.0 s
+> and delivers nothing inside the SLO at all.** Every request it admitted
+> finished inside the budget, at every offered load in the grid. Across the
+> ladder, goodput at the SLO rises 4.6× from FIFO to rung 5 and p99 past
+> saturation falls from 300 s to 3.8 s.
+>
+> Each of those numbers is the mean of three seeds with the range reported
+> beside it, from 144 runs over ten hours, interleaved rate-major with the
+> rung order rotated and a thermal probe taken before every single run. See
+> [Week 5](#week-5-the-ladder-three-seeds-and-a-gate-that-can-fail).
+>
+> **Week 5's most useful findings are again failures.** A 99% per-request
+> guarantee is unattainable against this SLO and the honest bound says so by
+> refusing 100% of arrivals at an idle engine — reproduced here on three
+> seeds. A conformal bound carried to hardware it was not calibrated on is
+> not conservative but arbitrary, which was discovered the hard way and is
+> now checked at start-up. And the thermal probe itself has a defect, named
+> in [its own table](#was-the-machine-the-same-machine) rather than
+> smoothed over.
 >
 > Week 3's headline is a negative result, reported as one: the profile says
 > the two structures are **0.02% of scheduler-thread time**, the port is a
@@ -43,15 +56,24 @@ prefix reuse, and conformal admission control.**
 > measured configuration reached the pressure it needs. See
 > [Week 3](#week-3-the-c17-core-and-what-it-was-actually-worth).
 
+
+![p99 end-to-end vs offered load, five rungs](docs/figs/w5/p99_vs_load.png)
+
+*Five rungs, three seeds each, shaded min-max. x is **offered** load, not
+achieved throughput — achieved throughput saturates, which folds the entire
+overload region into one point at the right-hand edge. y is log, because the
+rungs differ by two orders of magnitude past the knee. The dashed lines are
+the SLO and the measured saturation point.*
+
 ---
 
 ## The three claims, and where each is defended
 
 | Claim | Evidence | Status |
 |---|---|---|
-| **Iteration-level scheduling and prompt reuse move the collapse point 3.2× further out.** | Goodput at a 4 s SLO rises 0.37 → 1.19 rps across the four-rung ladder, on one interleaved sweep with a fixed arrival sequence. | **Measured** |
-| **The measurements are sound.** | Open-loop Poisson generator built before the scheduler, latency timestamped from *intended* arrival, arrival process KS-validated over 200 seeds, goodput reported alongside throughput — with the finding that throughput cannot distinguish the four rungs at all. | **Measured** |
-| **My scheduler holds p99 under overload.** | True, and measured: with split-conformal admission control at a 95% per-request guarantee, p99 end-to-end stays between 1.7 s and 2.5 s across a tenfold range of offered load, ending at 2.42 s where the same system without it reaches 203.6 s. Goodput past saturation is 4.6× the unmanaged system's. The bound's coverage is validated on a held-out split at four levels and again online. The cost is stated in the same table: below saturation the controller refuses work that would have made it, and a 99% guarantee against this SLO is unattainable. | **Measured** |
+| **Iteration-level scheduling and prompt reuse move the collapse point 2.8× further out.** | Goodput at a 4 s SLO rises 0.44 → 1.23 rps across rungs 1–4 of the five-rung ladder: 90 runs, three seeds each, one interleaved sweep, rate-major with the rung order rotated. Adding admission control takes it to 2.02 rps, a 4.6× total. | **Measured** |
+| **The measurements are sound.** | Open-loop Poisson generator built before the scheduler, latency timestamped from *intended* arrival, arrival process KS-validated over 200 seeds and each of the three sweep seeds recorded *before* the run rather than chosen after it, goodput reported alongside throughput — with the finding that throughput cannot distinguish the rungs at all. A fixed probe before each of the 144 runs says the machine's speed varied 21.9% across the sweep but only 5.7% between rung means, and rung 4 was run twice in two blocks to put a number on what the second block cost. | **Measured** |
+| **My scheduler holds p99 under overload.** | True, and measured on three seeds: at a 95% per-request guarantee, p99 end-to-end stays between **1.6 s and 2.3 s across the whole 0.6–4.0 rps grid**, ending at 2.3 s where the same system without admission control reaches 90.0 s and serves nothing inside the SLO. **100% of admitted requests met the budget at every offered load.** The bound's coverage is validated on a held-out split at four levels and again online. The cost is in the same table and it is large: at 4 rps the controller refuses 59% of arrivals, below saturation it refuses work that would have made it, and a 99% guarantee against this SLO is unattainable — that arm refuses everything. | **Measured** |
 | **My C++ is load-bearing, not decorative.** | It is not load-bearing, and that is the measured answer rather than the hoped-for one: the profile puts the allocator and the radix cache at 0.02% of scheduler-thread time, the port is 2.1× on the microbenchmark and 0% end to end, and the arithmetic said so before the run did. The port earned its place on correctness instead — it surfaced a use-after-free in the Python version, and it is held to the reference by a differential fuzz over 5 000 random operation sequences. | **Measured** |
 
 The third row is the one the project exists for, and it is worth reading with
@@ -1472,11 +1494,43 @@ cache from another. Both cost time and buy a comparison that is about
 scheduling.
 
 <!-- ABLATION -->
+
+| Config | Isolates | Peak goodput (rps, SLO 4s) | at offered (rps) | p50 TTFT (s) | p99 TTFT (s) | p99 E2E at 2.6 rps (s) | Prefix hit rate |
+|:--|:--|--:|--:|--:|--:|--:|--:|
+| 1  FIFO, no batching | the baseline everything is measured against | 0.44 ± 0.10 | 0.6 | 2.41 | 7.44 ± 4.15 | 300.1 ± 3.2 | n/a |
+| 2  static batching (8) | the cost of head-of-line blocking | 0.55 ± 0.02 | 0.6 | 1.23 | 5.04 ± 3.59 | 217.8 ± 48.2 | n/a |
+| 3  continuous batching | iteration-level scheduling | 0.81 ± 0.06 | 1.0 | 0.42 | 1.41 ± 0.78 | 187.1 ± 26.8 | n/a |
+| 4  + paged KV + prefix cache | memory efficiency and prompt reuse | 1.23 ± 0.06 | 1.4 | 0.10 | 0.85 ± 0.10 | 42.3 ± 8.1 | 64% |
+| 5  + conformal admission (80%) | tail-latency control under overload | 2.02 ± 0.12 | 4.0 | 0.07 | 0.81 ± 0.18 | 3.8 ± 0.8 | 72% |
+| 5  + conformal admission (95%) | the same control, promised harder | 1.62 ± 0.06 | 4.0 | 0.06 | 0.65 ± 0.05 | 2.0 ± 0.1 | 74% |
+| 5  + conformal admission (99%) | the same control, promised harder still | 0.00 | — | — | — | — | — |
+
+`±` is the min-max range over three seeds. Peak goodput is the maximum over the offered-load grid, and the column beside it is the load at which that maximum occurred. The last latency column is read at 2.6 rps -- about twice the 1.4 rps at which rung 4's goodput peaks -- so every rung is compared at the same offered load, well past saturation for all five.
+
 <!-- /ABLATION -->
+
+**Goodput at the SLO rises 4.6× from rung 1 to rung 5, and p99 end-to-end at
+2.6 rps — roughly twice the load at which rung 4's goodput peaks — falls from
+300 s to 3.8 s.** Every rung earns its place: batching at all buys 1.25×,
+making that batching iteration-level buys another 1.47×, reusing the shared
+system prompt buys a further 1.52×, and refusing work the system cannot serve
+buys the last 1.64×.
+
+The interesting part is the shape rather than the ratios. Rungs 1 to 4 are the
+same curve moved right: each one collapses later than the one below it, and
+each one collapses. Rung 5 is a different curve. It is the only line on the
+chart that does not go up.
 
 ![p99 end-to-end vs offered load](docs/figs/w5/p99_vs_load.png)
 
 ![Goodput vs offered load](docs/figs/w5/goodput_vs_load.png)
+
+The right-hand panel is there so the left one cannot be read as a free lunch.
+Rung 5 buys its goodput by refusing between 18% and 48% of arrivals; the price
+is on the chart next to the benefit. And the left panel contains the whole
+argument for measuring goodput rather than throughput: at 4 rps rung 4
+*completes* nearly every request it is given, eventually. Its goodput is
+zero.
 
 ### Rung 5 is a choice, so here are three of them
 
@@ -1486,6 +1540,32 @@ and choosing it is a product decision, not a fitting decision. Reporting one
 alpha would present a choice as a result.
 
 <!-- ARMS -->
+
+| Config | 0.6 rps | 1 rps | 1.4 rps | 1.9 rps | 2.6 rps | 4 rps |
+|:--|--:|--:|--:|--:|--:|--:|
+| **Goodput (rps within 4s)** | | | | | | |
+| 4  + paged KV + prefix cache | 0.69 | 1.07 | 1.23 | 1.15 | 0.72 | 0.00 |
+| 5  + conformal admission (99%) | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+| 5  + conformal admission (95%) | 0.37 | 0.62 | 0.77 | 0.93 | 1.20 | 1.62 |
+| 5  + conformal admission (80%) | 0.59 | 0.91 | 1.13 | 1.30 | 1.65 | 2.02 |
+| **p99 end-to-end (s)** | | | | | | |
+| 4  + paged KV + prefix cache | 5.4 | 8.3 | 13.7 | 24.9 | 42.3 | 90.0 |
+| 5  + conformal admission (99%) | - | - | - | - | - | - |
+| 5  + conformal admission (95%) | 1.6 | 1.7 | 1.9 | 1.8 | 2.0 | 2.3 |
+| 5  + conformal admission (80%) | 2.8 | 3.4 | 3.2 | 3.6 | 3.8 | 4.7 |
+| **Refused (503)** | | | | | | |
+| 4  + paged KV + prefix cache | 0% | 0% | 0% | 0% | 0% | 0% |
+| 5  + conformal admission (99%) | 100% | 100% | 100% | 100% | 100% | 100% |
+| 5  + conformal admission (95%) | 50% | 47% | 51% | 53% | 54% | 59% |
+| 5  + conformal admission (80%) | 18% | 21% | 28% | 33% | 37% | 48% |
+| **SLO attainment among admitted** | | | | | | |
+| 4  + paged KV + prefix cache | 96% | 91% | 79% | 59% | 28% | 0% |
+| 5  + conformal admission (99%) | - | - | - | - | - | - |
+| 5  + conformal admission (95%) | 100% | 100% | 100% | 100% | 100% | 100% |
+| 5  + conformal admission (80%) | 100% | 100% | 100% | 99% | 99% | 97% |
+
+Mean over three seeds. The last block is the promise the controller actually kept: of the requests it chose to admit, how many finished inside 4s. The row above it is what that cost.
+
 <!-- /ARMS -->
 
 ![Rung 5 at three guarantee levels](docs/figs/w5/admission_arms.png)
@@ -1502,20 +1582,143 @@ and it is kept in the results directory rather than tidied away.
 It is also the reason the ladder was measured in two blocks — see
 [the anchor](#what-two-blocks-cost) below.
 
+The two arms that do serve traffic bracket the trade-off cleanly:
+
+- **alpha = 0.05** keeps p99 end-to-end between **1.6 s and 2.3 s across the
+  whole 0.6–4.0 rps grid** and admits every request it can keep the promise
+  about: **100% of admitted requests met the 4 s budget at every offered
+  load**. It pays for that by refusing about half of them.
+- **alpha = 0.20** refuses far less — 18% at 0.6 rps, 48% at 4 rps — and
+  delivers **2.02 rps of goodput at 4 rps against rung 4's zero**. Its p99
+  reaches 4.7 s at the top of the grid, i.e. it slightly *misses* the SLO
+  there, and its attainment among admitted falls to 97%. A weaker promise,
+  kept slightly less well, for a third more useful work.
+
+Neither is "the right answer". Which one is right depends on whether the
+service would rather refuse a request or serve it late, and that is not a
+question a benchmark can answer.
+
 ### The spread
 
 A single run of a latency benchmark on a laptop is not a number anyone should
 trust. Every cell below is the mean of three seeds with the range beside it.
 
 <!-- SPREAD -->
+
+| Config | offered (rps) | seeds | goodput (rps) | p99 E2E (s) | p99 TTFT (s) | SLO attainment |
+|:--|--:|--:|:--|:--|:--|:--|
+| 1  FIFO, no batching | 0.6 | 3 | 0.44 [0.40, 0.51] | 8.3 [5.6, 9.6] | 7.44 [5.23, 9.37] | 0.62 [0.52, 0.82] |
+| 1  FIFO, no batching | 1 | 3 | 0.02 [0.00, 0.05] | 45.8 [15.2, 73.3] | 45.13 [14.96, 72.74] | 0.02 [0.00, 0.05] |
+| 1  FIFO, no batching | 1.4 | 3 | 0.00 [0.00, 0.00] | 121.8 [69.0, 152.4] | 121.03 [68.58, 151.72] | 0.00 [0.00, 0.00] |
+| 1  FIFO, no batching | 1.9 | 3 | 0.00 [0.00, 0.00] | 210.6 [160.4, 239.7] | 210.18 [160.04, 239.04] | 0.00 [0.00, 0.00] |
+| 1  FIFO, no batching | 2.6 | 3 | 0.00 [0.00, 0.00] | 300.1 [298.1, 301.4] | 299.25 [297.92, 299.95] | 0.00 [0.00, 0.00] |
+| 1  FIFO, no batching | 4 | 3 | 0.00 [0.00, 0.00] | 302.1 [301.6, 303.2] | 299.99 [299.98, 300.00] | 0.00 [0.00, 0.00] |
+| 2  static batching (8) | 0.6 | 3 | 0.55 [0.54, 0.56] | 7.0 [4.7, 9.0] | 5.04 [3.53, 7.12] | 0.77 [0.68, 0.91] |
+| 2  static batching (8) | 1 | 3 | 0.35 [0.00, 0.62] | 12.9 [8.1, 18.9] | 9.72 [5.67, 13.16] | 0.32 [0.00, 0.61] |
+| 2  static batching (8) | 1.4 | 3 | 0.07 [0.00, 0.21] | 43.4 [14.7, 63.1] | 40.74 [12.61, 60.16] | 0.05 [0.00, 0.15] |
+| 2  static batching (8) | 1.9 | 3 | 0.00 [0.00, 0.00] | 112.0 [77.3, 138.1] | 108.26 [71.57, 134.74] | 0.00 [0.00, 0.00] |
+| 2  static batching (8) | 2.6 | 3 | 0.00 [0.00, 0.00] | 217.8 [186.6, 234.8] | 215.74 [184.63, 232.84] | 0.00 [0.00, 0.00] |
+| 2  static batching (8) | 4 | 3 | 0.00 [0.00, 0.00] | 300.8 [300.4, 301.0] | 297.15 [293.42, 299.03] | 0.00 [0.00, 0.00] |
+| 3  continuous batching | 0.6 | 3 | 0.64 [0.56, 0.71] | 6.3 [4.4, 8.2] | 0.81 [0.72, 0.90] | 0.89 [0.87, 0.91] |
+| 3  continuous batching | 1 | 3 | 0.81 [0.78, 0.84] | 13.9 [11.0, 15.9] | 1.41 [1.05, 1.83] | 0.70 [0.63, 0.82] |
+| 3  continuous batching | 1.4 | 3 | 0.31 [0.02, 0.87] | 44.0 [19.2, 67.3] | 12.36 [2.43, 18.52] | 0.22 [0.01, 0.63] |
+| 3  continuous batching | 1.9 | 3 | 0.00 [0.00, 0.00] | 96.7 [68.7, 113.3] | 68.91 [42.24, 85.00] | 0.00 [0.00, 0.00] |
+| 3  continuous batching | 2.6 | 3 | 0.00 [0.00, 0.00] | 187.1 [169.6, 196.4] | 167.51 [145.91, 178.93] | 0.00 [0.00, 0.00] |
+| 3  continuous batching | 4 | 3 | 0.00 [0.00, 0.00] | 317.9 [312.8, 325.1] | 299.81 [299.69, 299.87] | 0.00 [0.00, 0.00] |
+| 4  + paged KV + prefix cache | 0.6 | 3 | 0.69 [0.60, 0.75] | 5.4 [4.3, 7.4] | 0.58 [0.57, 0.58] | 0.96 [0.95, 0.98] |
+| 4  + paged KV + prefix cache | 1 | 3 | 1.07 [0.98, 1.13] | 8.3 [5.7, 10.9] | 0.78 [0.68, 0.84] | 0.91 [0.88, 0.95] |
+| 4  + paged KV + prefix cache | 1.4 | 3 | 1.23 [1.19, 1.25] | 13.7 [9.4, 17.2] | 0.85 [0.81, 0.91] | 0.79 [0.71, 0.90] |
+| 4  + paged KV + prefix cache | 1.9 | 3 | 1.15 [1.06, 1.32] | 24.9 [15.8, 31.4] | 1.42 [1.34, 1.57] | 0.59 [0.51, 0.72] |
+| 4  + paged KV + prefix cache | 2.6 | 3 | 0.72 [0.41, 1.09] | 42.3 [39.6, 47.7] | 5.68 [4.81, 6.33] | 0.28 [0.15, 0.44] |
+| 4  + paged KV + prefix cache | 4 | 3 | 0.00 [0.00, 0.00] | 90.0 [84.7, 93.6] | 71.39 [63.90, 77.58] | 0.00 [0.00, 0.00] |
+| 5  + conformal admission (80%) | 0.6 | 3 | 0.59 [0.49, 0.66] | 2.8 [2.4, 3.2] | 0.51 [0.45, 0.60] | 0.82 [0.80, 0.84] |
+| 5  + conformal admission (80%) | 1 | 3 | 0.91 [0.82, 0.96] | 3.4 [2.7, 4.7] | 0.64 [0.58, 0.74] | 0.78 [0.77, 0.80] |
+| 5  + conformal admission (80%) | 1.4 | 3 | 1.13 [1.05, 1.17] | 3.2 [2.5, 3.7] | 0.58 [0.55, 0.61] | 0.72 [0.69, 0.76] |
+| 5  + conformal admission (80%) | 1.9 | 3 | 1.30 [1.24, 1.34] | 3.6 [3.4, 3.7] | 0.61 [0.54, 0.67] | 0.66 [0.63, 0.68] |
+| 5  + conformal admission (80%) | 2.6 | 3 | 1.65 [1.59, 1.70] | 3.8 [3.5, 4.3] | 0.70 [0.60, 0.76] | 0.63 [0.62, 0.63] |
+| 5  + conformal admission (80%) | 4 | 3 | 2.02 [1.94, 2.07] | 4.7 [4.3, 4.9] | 0.81 [0.70, 0.88] | 0.51 [0.50, 0.52] |
+| 5  + conformal admission (95%) | 0.6 | 3 | 0.37 [0.27, 0.42] | 1.6 [1.4, 1.8] | 0.40 [0.39, 0.42] | 0.50 [0.43, 0.55] |
+| 5  + conformal admission (95%) | 1 | 3 | 0.62 [0.53, 0.69] | 1.7 [1.6, 1.9] | 0.43 [0.40, 0.46] | 0.53 [0.51, 0.56] |
+| 5  + conformal admission (95%) | 1.4 | 3 | 0.77 [0.74, 0.78] | 1.9 [1.7, 2.0] | 0.45 [0.43, 0.48] | 0.49 [0.47, 0.54] |
+| 5  + conformal admission (95%) | 1.9 | 3 | 0.93 [0.89, 1.00] | 1.8 [1.8, 1.9] | 0.49 [0.45, 0.54] | 0.47 [0.43, 0.50] |
+| 5  + conformal admission (95%) | 2.6 | 3 | 1.20 [1.16, 1.25] | 2.0 [2.0, 2.0] | 0.51 [0.43, 0.63] | 0.46 [0.43, 0.47] |
+| 5  + conformal admission (95%) | 4 | 3 | 1.62 [1.58, 1.64] | 2.3 [2.1, 2.5] | 0.65 [0.63, 0.67] | 0.41 [0.39, 0.42] |
+| 5  + conformal admission (99%) | 0.6 | 3 | 0.00 [0.00, 0.00] | nan [nan, nan] | nan [nan, nan] | 0.00 [0.00, 0.00] |
+| 5  + conformal admission (99%) | 1 | 3 | 0.00 [0.00, 0.00] | nan [nan, nan] | nan [nan, nan] | 0.00 [0.00, 0.00] |
+| 5  + conformal admission (99%) | 1.4 | 3 | 0.00 [0.00, 0.00] | nan [nan, nan] | nan [nan, nan] | 0.00 [0.00, 0.00] |
+| 5  + conformal admission (99%) | 1.9 | 3 | 0.00 [0.00, 0.00] | nan [nan, nan] | nan [nan, nan] | 0.00 [0.00, 0.00] |
+| 5  + conformal admission (99%) | 2.6 | 3 | 0.00 [0.00, 0.00] | nan [nan, nan] | nan [nan, nan] | 0.00 [0.00, 0.00] |
+| 5  + conformal admission (99%) | 4 | 3 | 0.00 [0.00, 0.00] | nan [nan, nan] | nan [nan, nan] | 0.00 [0.00, 0.00] |
+
+Mean over seeds, with `[min, max]` beside it. Goodput and SLO attainment are computed at a 4s target; latency quantiles come from the load generator's raw records, never from a Prometheus histogram.
+
 <!-- /SPREAD -->
 
 ### What each rung cost
 
+A ladder in which every rung improves every metric is not a ladder, it is a
+sales deck. This table is generated by `bench/w5_report.py` rather than
+written, so the rule cannot be quietly dropped from a later revision of the
+writeup: it reports every place a component made a metric more than 5% worse
+than the rung below it.
+
 <!-- TRADEOFFS -->
+
+| Change | Metric | worst at (rps) | before | after | | loads affected |
+|:--|:--|--:|--:|--:|--:|--:|
+| 1  FIFO, no batching → 2  static batching (8) | p99 inter-token | 2.6 | 0.015 | 0.050 | +225% | 6/6 |
+| 2  static batching (8) → 3  continuous batching | p99 inter-token | 0.6 | 0.028 | 0.311 | +1030% | 6/6 |
+| 2  static batching (8) → 3  continuous batching | p99 end-to-end | 1 | 12.90 | 13.94 | +8% | 2/6 |
+| 4  + paged KV + prefix cache → 5  + conformal admission (80%) | completed requests/s | 4 | 3.98 | 2.08 | -48% | 6/6 |
+| 4  + paged KV + prefix cache → 5  + conformal admission (80%) | SLO attainment | 0.6 | 0.96 | 0.82 | -14% | 3/6 |
+| 4  + paged KV + prefix cache → 5  + conformal admission (80%) | goodput | 1 | 1.07 | 0.91 | -14% | 3/6 |
+| 5  + conformal admission (80%) → 5  + conformal admission (95%) | SLO attainment | 0.6 | 0.82 | 0.50 | -39% | 6/6 |
+| 5  + conformal admission (80%) → 5  + conformal admission (95%) | goodput | 0.6 | 0.59 | 0.37 | -38% | 6/6 |
+| 5  + conformal admission (80%) → 5  + conformal admission (95%) | completed requests/s | 0.6 | 0.59 | 0.37 | -38% | 6/6 |
+| 5  + conformal admission (95%) → 5  + conformal admission (99%) | goodput | 0.6 | 0.37 | 0.00 | -100% | 6/6 |
+| 5  + conformal admission (95%) → 5  + conformal admission (99%) | completed requests/s | 0.6 | 0.37 | 0.00 | -100% | 6/6 |
+| 5  + conformal admission (95%) → 5  + conformal admission (99%) | SLO attainment | 0.6 | 0.50 | 0.00 | -100% | 6/6 |
+
+Every place where adding a component made a metric more than 5% worse than the rung below it, at a 4s SLO. One row per (transition, metric), shown at the offered load where the degradation was largest, with the number of the grid's 6 loads at which it appeared. Generated by `bench/w5_report.py` and not selected by hand -- the 5% floor is there because three seeds do not separate two rungs below it. The full grid is in `docs/ablation_full.csv`.
+
 <!-- /TRADEOFFS -->
 
+Four of these are worth reading closely.
+
+**Continuous batching makes inter-token latency 10× worse, at every offered
+load.** Rung 3 raises p99 ITL from 28 ms to 311 ms. That is not a bug being
+confessed; it is what iteration-level scheduling *is*. A sequence that would
+have had the machine to itself now shares each forward pass with up to
+twenty-three others, and chunked prefill puts other requests' prompt work
+between its tokens. The trade is the whole reason rung 3 exists: it buys the
+time to *first* token, and the end-to-end latency, with the smoothness of the
+stream after it.
+
+**Static batching makes it 3.3× worse before that, for a worse reason.**
+Wait-to-fill means a request that arrives just after a wave launches waits for
+the next one.
+
+**Rung 5 completes 48% fewer requests than rung 4 at 4 rps** — and that is
+the point rather than the cost. It also delivers 2.02 rps of goodput where
+rung 4 delivers zero. Throughput and goodput point in opposite directions
+under overload, and only one of them is what a user experiences.
+
+**Rung 5 is worse than rung 4 *below* saturation, on three of the six offered
+loads.** At 0.6 rps the controller refuses 18% of arrivals that rung 4 would
+have served inside the budget, costing 14% of both goodput and SLO
+attainment. The bound is conservative by construction — it is an upper bound
+on a quantile of a distribution with a long tail — so at low load it refuses
+work the system would in fact have completed. Anyone deploying this should
+know that admission control is not free below the knee, and the honest
+mitigation is to raise alpha or to disable the controller under a load
+threshold, neither of which is measured here.
+
 ![TTFT and ITL distributions](docs/figs/w5/ttft_itl_distributions.png)
+
+The left panel is where the ladder is legible as *shapes* rather than
+quantiles: FIFO's long flat shoulder is head-of-line blocking, and rung 4's
+knee two orders of magnitude to the left is the same workload with the same
+model on the same machine. The right panel is the bill for it.
 
 ### Was the machine the same machine?
 
@@ -1526,17 +1729,95 @@ ask for. It is recorded on every row and reported here; it is never used to
 silently drop a run.
 
 <!-- THERMAL -->
+
+| Measured before | probes | decode (tok/s), mean | min | max |
+|:--|--:|--:|--:|--:|
+| 1  FIFO, no batching | 18 | 87.4 | 83.8 | 94.7 |
+| 2  static batching (8) | 18 | 83.9 | 81.4 | 90.4 |
+| 3  continuous batching | 18 | 85.7 | 82.7 | 88.3 |
+| 4  + paged KV + prefix cache | 36 | 87.6 | 83.6 | 103.9 |
+| 5  + conformal admission (80%) | 18 | 88.5 | 81.1 | 94.4 |
+| 5  + conformal admission (95%) | 17 | 89.0 | 82.6 | 93.4 |
+| **whole sweep** | 125 | **87.1** | 81.1 | 103.9 |
+
+A fixed 64-token single-stream generation, greedy, on an idle engine, timed immediately before each of the 125 measured runs (`bench/run_sweep.py:canary`). It is this project's substitute for `powermetrics`, which needs root: the number is a direct reading of how fast the machine was at that moment.
+
+Across the whole sweep the probe varied by 21.9%. What matters for the ladder is not that spread but whether it fell *unevenly* on the rungs, and the per-rung means differ by 5.7% -- the rate-major, rung-rotated order is what keeps that small, and this table is how the claim is checked rather than asserted.
+
+19 of the 144 probes returned nothing, all of them on the admission rungs (5  + conformal admission (99%): 18, 5  + conformal admission (95%): 1). The probe goes through the same door as every other request, so a controller that is shedding sheds it too. That is a defect in the instrument rather than in the engine -- the probe should bypass admission, and does not -- and it is left as it ran: the rungs whose thermal coverage is thinner are named here rather than quietly averaged in.
+
 <!-- /THERMAL -->
+
+The 21.9% figure is worth sitting with, because it is larger than several of
+the differences this project reports elsewhere, and it is exactly the hazard
+the build guide warns about for laptop benchmarks. What makes the ladder
+survive it is that the variation did not fall unevenly on the rungs: the
+per-rung means differ by 5.7%, against rung-to-rung differences of 30% to
+two orders of magnitude. That is what the rate-major, rung-rotated order is
+for, and this is the table that checks it rather than the paragraph that
+promises it.
 
 ### What two blocks cost
 
 <!-- ANCHOR -->
+
+| offered (rps) | metric | block 1 (rungs 1-5, alpha 0.01) | block 2 (rung 5 arms) | |
+|--:|:--|--:|--:|--:|
+| 0.6 | p99 end-to-end (s) | 5.4 | 5.3 | -0% |
+| 1 | p99 end-to-end (s) | 8.3 | 8.8 | +7% |
+| 1.4 | p99 end-to-end (s) | 13.7 | 14.3 | +4% |
+| 1.9 | p99 end-to-end (s) | 24.9 | 27.5 | +11% |
+| 2.6 | p99 end-to-end (s) | 42.3 | 38.3 | -9% |
+| 4 | p99 end-to-end (s) | 90.0 | 95.6 | +6% |
+| 0.6 | goodput (rps) | 0.69 | 0.69 | +0% |
+| 1 | goodput (rps) | 1.07 | 1.07 | +0% |
+| 1.4 | goodput (rps) | 1.23 | 1.22 | -1% |
+| 1.9 | goodput (rps) | 1.15 | 1.11 | -3% |
+| 2.6 | goodput (rps) | 0.72 | 1.00 | +40% |
+| 4 | goodput (rps) | 0.00 | 0.00 | both zero |
+
+Rung 4, run twice: once interleaved with rungs 1-3, once interleaved with the rung-5 arms hours later, with everything else identical. The largest disagreement is 11% in p99 end-to-end and 40% in goodput.
+
+The goodput figure is the one to take seriously, and it is worse than it looks at first: the large disagreements are at the offered loads just past the collapse point, where goodput is falling steeply and a few percent of extra machine speed moves a lot of requests across the SLO line. That is not noise in the measurement so much as genuine sensitivity in the thing being measured, and it is why the ladder's claims are made about the shape of these curves rather than about individual cells.
+
+Any cross-block comparison -- which means every comparison involving rung 5 -- should be read with this as its floor. The rung-5 differences are one to two orders of magnitude, so they survive it comfortably; a 10% difference between two rungs measured in different blocks would not be a result.
+
 <!-- /ANCHOR -->
 
 ### And across sessions
 
 <!-- SESSION -->
+
+| offered (rps) | Week 2 p99 E2E (s) | Week 5 p99 E2E (s) | |
+|--:|--:|--:|--:|
+| 0.6 | 4.38 | 5.36 | +22% |
+| 1 | 8.31 | 8.27 | -0% |
+| 1.4 | 14.41 | 13.67 | -5% |
+| 1.9 | 27.21 | 24.89 | -9% |
+| 2.6 | 32.59 | 42.32 | +30% |
+
+The one rung both sessions ran, at the offered loads they share. Week 2 is a single seed and Week 5 is the mean of three, so this is not a controlled comparison -- it is a bound on how much a cross-session comparison in this writeup can be trusted.
+
 <!-- /SESSION -->
+
+### The drain, measured
+
+<!-- DRAIN -->
+
+| What SIGTERM did | Measured |
+|:--|:--|
+| `/ready` before the signal | 200 |
+| `/ready` after the signal | 503 after 2 ms |
+| a request arriving mid-drain | 503 with `Retry-After: 1.000` |
+| streams in flight when it landed | 8 |
+| of those, still running at the signal | 8 |
+| of those, finished with a real `finish_reason` | 8 |
+| truncated | 0 |
+| wall time from signal to exit | 2.29s |
+
+One run of `uv run bench/demo_drain.py`, which exits non-zero if any row above comes out wrong -- including if every stream had already finished when the signal landed, since that would mean nothing was drained.
+
+<!-- /DRAIN -->
 
 ### The CI load gate
 
@@ -1648,8 +1929,7 @@ go 503 within a second of the signal, if a late arrival is not refused with a
 happened to finish before the signal landed, which would mean nothing was
 drained and the demo proved nothing.
 
-<!-- DRAIN -->
-<!-- /DRAIN -->
+The run it produced is [above](#the-drain-measured).
 
 **The weights are baked in and checksummed.** A model pulled on boot is a cold
 start that scales with the network, and a cold start is a latency outlier in

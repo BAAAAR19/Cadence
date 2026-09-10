@@ -86,8 +86,13 @@ def _pct(v, dash="-") -> str:
 
 
 def present(s: pd.DataFrame) -> list[str]:
+    """Ladder order, then the remaining rung-5 arms from weakest promise to
+    strongest -- so the row that refuses everything is last, where it reads as
+    the end of a trend rather than as an anomaly in the middle of the table."""
     seen = list(dict.fromkeys(s.config))
-    return [c for c in RUNGS if c in seen] + [c for c in seen if c not in RUNGS]
+    out = [c for c in RUNGS if c in seen]
+    out += [c for c in reversed(ARMS) if c in seen and c not in out]
+    return out + [c for c in seen if c not in out]
 
 
 # --- per-seed aggregation --------------------------------------------------
@@ -162,6 +167,17 @@ def ablation_table(s: pd.DataFrame, hits: pd.Series | None, slo: float) -> tuple
         if hits is not None and "cache" in cfg:
             got = [v for (c, _), v in hits.items() if c == cfg]
             hit = float(np.nanmean(got)) if got and np.isfinite(got).any() else float("nan")
+        if peak <= 0:
+            # An arm that admitted nothing has no peak, no load at which the
+            # peak occurred, and no latency quantiles: there are no completed
+            # requests to take them over. Printing "0.00 at 0.6 rps" would be
+            # inventing three numbers out of one.
+            rows.append(
+                f"| {LABELS.get(cfg, cfg)} | {ISOLATES.get(cfg, '')} | 0.00 | — "
+                f"| — | — | — | — |"
+            )
+            meta[cfg] = {"peak_goodput_rps": 0.0, "admitted_nothing": True}
+            continue
         rows.append(
             "| {label} | {isolates} | {peak} ± {ps} | {at} | {t50} | {t99} ± {ts} "
             "| {e99} ± {es} | {hit} |".format(
@@ -398,31 +414,54 @@ def anchor_table(main: pd.DataFrame, second: pd.DataFrame, slo: float) -> tuple[
         "| offered (rps) | metric | block 1 (rungs 1-5, alpha 0.01) | block 2 (rung 5 arms) | |",
         "|--:|:--|--:|--:|--:|",
     ]
-    deltas = []
+    worst_by = {}
     for metric, name, nd in (("e2e_p99", "p99 end-to-end (s)", 1),
                              ("goodput_rps", "goodput (rps)", 2)):
         a = per_seed(main[main.config == cfg], metric).set_index("rate_rps")["mean"]
         b = per_seed(second[second.config == cfg], metric).set_index("rate_rps")["mean"]
         for r in rates:
-            if not (np.isfinite(a.get(r, np.nan)) and np.isfinite(b.get(r, np.nan))):
+            av, bv = a.get(r, np.nan), b.get(r, np.nan)
+            if not (np.isfinite(av) and np.isfinite(bv)):
                 continue
-            d = (b[r] - a[r]) / a[r] if a[r] else float("nan")
-            if metric == "e2e_p99":
-                deltas.append(abs(d))
+            if av == 0 and bv == 0:
+                # Both blocks delivered nothing inside the SLO. That is
+                # agreement, not a 0/0 percentage.
+                lines.append(
+                    f"| {r:g} | {name} | {av:.{nd}f} | {bv:.{nd}f} | both zero |"
+                )
+                continue
+            d = (bv - av) / av if av else float("inf")
+            worst_by[metric] = max(worst_by.get(metric, 0.0), abs(d))
             lines.append(
-                f"| {r:g} | {name} | {a[r]:.{nd}f} | {b[r]:.{nd}f} | {d:+.0%} |"
+                f"| {r:g} | {name} | {av:.{nd}f} | {bv:.{nd}f} | {d:+.0%} |"
             )
-    worst = max(deltas) if deltas else float("nan")
+    worst = worst_by.get("e2e_p99", float("nan"))
+    worst_goodput = worst_by.get("goodput_rps", float("nan"))
     lines.append("")
     lines.append(
         f"Rung 4, run twice: once interleaved with rungs 1-3, once "
         f"interleaved with the rung-5 arms hours later, with everything else "
-        f"identical. The largest disagreement in p99 end-to-end is "
-        f"{100 * worst:.0f}%. Any cross-block comparison in the ladder -- which "
-        f"means every comparison involving rung 5 -- should be read with that "
-        f"as its noise floor. Differences smaller than it are not results."
+        f"identical. The largest disagreement is {100 * worst:.0f}% in p99 "
+        f"end-to-end and {100 * worst_goodput:.0f}% in goodput.\n\n"
+        f"The goodput figure is the one to take seriously, and it is worse "
+        f"than it looks at first: the large disagreements are at the offered "
+        f"loads just past the collapse point, where goodput is falling "
+        f"steeply and a few percent of extra machine speed moves a lot of "
+        f"requests across the SLO line. That is not noise in the "
+        f"measurement so much as genuine sensitivity in the thing being "
+        f"measured, and it is why the ladder's claims are made about the "
+        f"shape of these curves rather than about individual cells.\n\n"
+        f"Any cross-block comparison -- which means every comparison "
+        f"involving rung 5 -- should be read with this as its floor. The "
+        f"rung-5 differences are one to two orders of magnitude, so they "
+        f"survive it comfortably; a 10% difference between two rungs "
+        f"measured in different blocks would not be a result."
     )
-    return "\n".join(lines), {"worst_p99_delta": float(worst), "rates": rates}
+    return "\n".join(lines), {
+        "worst_p99_delta": float(worst),
+        "worst_goodput_delta": float(worst_goodput),
+        "rates": rates,
+    }
 
 
 def thermal_table(canary_paths: list[Path]) -> tuple[str, dict]:

@@ -1,0 +1,86 @@
+{
+  "t_signal": 163776.758909041,
+  "ready_before_signal": 200,
+  "unready_after_s": 0.0015732499887235463,
+  "ready_body": {
+    "status": "draining",
+    "ready": true,
+    "draining": true,
+    "in_flight": 8,
+    "peak_in_flight": 8,
+    "max_concurrent": 2048,
+    "rejected_capacity": 0,
+    "rejected_draining": 0,
+    "drain_elapsed_s": 0.0007507801055908203
+  },
+  "late_status": 503,
+  "late_retry_after": "1.000",
+  "inflight": [
+    {
+      "i": 0,
+      "status": 200,
+      "tokens": 80,
+      "finish": "stop",
+      "e2e": 2.335634667018894,
+      "t_done": 163778.590563583
+    },
+    {
+      "i": 1,
+      "status": 200,
+      "tokens": 29,
+      "finish": "stop",
+      "e2e": 1.316366583982017,
+      "t_done": 163777.594903208
+    },
+    {
+      "i": 2,
+      "status": 200,
+      "tokens": 22,
+      "finish": "stop",
+      "e2e": 1.0440282080089673,
+      "t_done": 163777.322874833
+    },
+    {
+      "i": 3,
+      "status": 200,
+      "tokens": 29,
+      "finish": "stop",
+      "e2e": 1.3165736669907346,
+      "t_done": 163777.59559475
+    },
+    {
+      "i": 4,
+      "status": 200,
+      "tokens": 29,
+      "finish": "stop",
+      "e2e": 1.3162469169765245,
+      "t_done": 163777.595410708
+    },
+    {
+      "i": 5,
+      "status": 200,
+      "tokens": 29,
+      "finish": "stop",
+      "e2e": 1.316725625016261,
+      "t_done": 163777.596020416
+    },
+    {
+      "i": 6,
+      "status": 200,
+      "tokens": 81,
+      "finish": "stop",
+      "e2e": 2.3482383329828735,
+      "t_done": 163778.627651708
+    },
+    {
+      "i": 7,
+      "status": 200,
+      "tokens": 100,
+      "finish": "stop",
+      "e2e": 2.630189124989556,
+      "t_done": 163778.909799791
+    }
+  ],
+  "exit_code": -15,
+  "drain_wall_s": 2.2944993340061046
+}
