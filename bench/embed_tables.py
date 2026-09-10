@@ -24,6 +24,9 @@ TABLES = {
     "CORE_PROFILE": "core_profile.md",
     "CORE_BENCH": "core_bench.md",
     "CORE_AB": "core_ab.md",
+    "ADMISSION": "admission.md",
+    "COVERAGE": "coverage.md",
+    "PREDICTOR": "predictor.md",
 }
 
 
@@ -58,7 +61,9 @@ def main(argv=None) -> None:
             raise SystemExit(
                 f"{readme} is stale: regenerate with "
                 f"`uv run bench/make_report.py results/w2_ladder --slo 4.0 --outdir docs`, "
-                f"`uv run bench/core_report.py` then `uv run bench/embed_tables.py`"
+                f"`uv run bench/core_report.py`, "
+                f"`uv run bench/w4_report.py results/w4_admission`, "
+                f"then `uv run bench/embed_tables.py`"
             )
         print(f"{readme} is up to date")
         return

@@ -65,7 +65,21 @@ def summarize(df: pd.DataFrame, steady_only: bool = True, slo_s: float | None = 
                 "throughput_rps": len(ok) / span if span else float("nan"),
                 "goodput_rps": float(g.met_slo.sum()) / span if span else float("nan"),
                 "slo_attainment": float(g.met_slo.mean()),
+                # Two denominators, because with a controller in the loop they
+                # answer different questions. ``slo_attainment`` is over every
+                # arrival, shed included, and is the one that matters to a user
+                # -- a 503 is not a served request. The admitted-only version is
+                # the promise the controller made about what it *did* let in,
+                # and reporting only that one would be the flattering mistake.
+                "slo_attainment_admitted": (
+                    float(g[g.status != 503].met_slo.mean())
+                    if (g.status != 503).any()
+                    else float("nan")
+                ),
                 "shed_rate": float((g.status == 503).mean()),
+                "admitted_rps": (
+                    float((g.status != 503).sum()) / span if span else float("nan")
+                ),
                 "mean_output_tokens": float(ok.n_tokens.mean()) if len(ok) else float("nan"),
                 "output_tok_per_s": float(ok.n_tokens.sum()) / span if span else float("nan"),
                 "window_s": span,

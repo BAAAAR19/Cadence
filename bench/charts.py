@@ -21,13 +21,24 @@ from analyze import load, summarize  # noqa: E402
 
 # One colour per rung, held fixed across every figure so the eye can carry a
 # configuration from one chart to the next.
-ORDER = ["fifo", "static", "continuous", "continuous+cache", "continuous+cache+admission"]
+ORDER = [
+    "fifo", "static", "continuous", "continuous+cache",
+    "continuous+cache+admission",
+    "continuous+cache+admission-a05",
+    "continuous+cache+admission-a20",
+    "continuous+cache+admission-rolling",
+]
 COLOURS = {
     "fifo": "#B3452F",
     "static": "#D68A2E",
     "continuous": "#3E7CB1",
     "continuous+cache": "#2E7D5B",
     "continuous+cache+admission": "#6B4E9B",
+    # One hue for the controller, three values for the guarantee it is asked to
+    # hold: darkest is the strongest promise.
+    "continuous+cache+admission-a05": "#8E72B8",
+    "continuous+cache+admission-a20": "#B39BD4",
+    "continuous+cache+admission-rolling": "#4F7A6A",
 }
 # The Week-2 knob experiments share the figure machinery with the ladder.
 KNOB_COLOURS = {
@@ -52,7 +63,10 @@ LABELS = {
     "static": "2  static batching (8)",
     "continuous": "3  continuous batching",
     "continuous+cache": "4  + paged KV + prefix cache",
-    "continuous+cache+admission": "5  + conformal admission",
+    "continuous+cache+admission": "5  + conformal admission (99%)",
+    "continuous+cache+admission-a05": "5  + conformal admission (95%)",
+    "continuous+cache+admission-a20": "5  + conformal admission (80%)",
+    "continuous+cache+admission-rolling": "5  + conformal admission (rolling)",
 }
 
 
@@ -173,17 +187,18 @@ def itl_histogram(df: pd.DataFrame, out: Path, group: str = "config",
         if group == "config"
         else list(dict.fromkeys(df[group]))
     )
-    allv = np.concatenate([np.asarray(v) for v in df.itl if len(v)]) if len(df) else np.array([])
+    # An arm that shed everything contributes no inter-token gaps at all, which
+    # is a legitimate state from Week 4 on and used to raise "need at least one
+    # array to concatenate" from inside the histogram.
+    parts = [np.asarray(v) for v in df.itl if len(v)] if len(df) else []
+    allv = np.concatenate(parts) if parts else np.array([])
     allv = allv[allv > 0] * 1e3 if allv.size else np.array([10.0, 100.0])
     lo, hi = max(1.0, allv.min() * 0.8), allv.max() * 1.3
     bins = np.logspace(np.log10(lo), np.log10(hi), 70)
     for k in keys:
         sub = df[df[group] == k]
-        vals = (
-            np.concatenate([np.asarray(v) for v in sub.itl if len(v)])
-            if len(sub)
-            else np.array([])
-        )
+        chunks = [np.asarray(v) for v in sub.itl if len(v)] if len(sub) else []
+        vals = np.concatenate(chunks) if chunks else np.array([])
         vals = vals[vals > 0] if vals.size else vals
         if not vals.size:
             continue
