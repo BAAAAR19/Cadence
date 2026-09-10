@@ -4,6 +4,7 @@ on:
   push:
     branches: [master, main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -83,6 +84,158 @@ jobs:
           CADENCE_FUZZ_EXAMPLES: "5000"
         run: uv run pytest -q tests/test_kv_parity.py --hypothesis-show-statistics
 
-  # Week 5 adds the load-test regression gate here: a short open-loop run
-  # against the mock backend with a committed goodput floor, so a scheduling
-  # regression fails the PR rather than showing up in a benchmark weeks later.
+  loadgate:
+    # A short open-loop load test on every PR, with a committed budget, so a
+    # scheduling regression fails the change that caused it instead of turning
+    # up in a benchmark three weeks later.
+    #
+    # It is not a benchmark, and the distinction is the whole reason it works.
+    # A GitHub runner is a shared VM whose neighbours are invisible, so its
+    # wall-clock latency measures the runner. The mock backend's per-token cost
+    # is a fixed sleep, which makes the measured p99 a function of the
+    # *scheduler's decisions* -- how it batches, when it preempts, what it
+    # admits -- and nearly independent of the machine. That is a number worth
+    # thresholding. See bench/check_regression.py.
+    name: load gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Sync
+        # llama-cpp-python is excluded for the same reason as in `test`: the
+        # gate runs entirely on the mock backend. The C++ KV core is still
+        # built and still used, because the gate is measuring the scheduler
+        # and the KV core is on its hot path.
+        run: uv sync --all-groups --no-install-package llama-cpp-python
+
+      - name: Short open-loop load test
+        # 4 rps is under the mock backend's knee and 8 rps is past it, so the
+        # run covers both the regime where the scheduler should be invisible
+        # and the one where its decisions are the only thing that matters.
+        # The admission rung uses a *separately calibrated* artifact: a
+        # conformal bound is only valid on the distribution it was calibrated
+        # on, and the committed models/admission.pkl was fitted on llama.cpp
+        # with Metal. Pointed at the mock backend it refuses everything at
+        # zero load -- see bench/ci_baseline.sh.
+        run: |
+          uv run bench/run_sweep.py \
+            --config continuous+cache+admission \
+            --rates 4,8 --duration 45 --warmup 10 --cooldown 3 \
+            --slo 2.0 --seed 0 --workload ci --port 8000 \
+            --set CADENCE_BACKEND=mock \
+            --set CADENCE_ADMISSION_MODEL=models/admission-ci-mock.pkl \
+            --out ci.parquet
+
+      - name: Enforce the SLO budget
+        run: |
+          uv run bench/check_regression.py ci.parquet \
+            --baseline bench/baselines/ci_baseline.json \
+            --slo 2.0 --max-p99-regression 0.15 --min-goodput 0.90 \
+            --summary-out "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the measurement
+        # Uploaded even on failure: the first question about a red gate is
+        # "what did it actually measure", and re-running it does not answer
+        # that -- it measures something else.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loadgate-parquet
+          path: |
+            ci.parquet
+            ci.server.log
+          retention-days: 14
+          if-no-files-found: warn
+
+  refresh-baseline:
+    # The baseline has to be measured where the gate runs.
+    #
+    # The mock backend's *sleeps* are hardware-independent, which is what
+    # makes the gate portable, but the Python around them -- the scheduler's
+    # bookkeeping, the KV accounting, JSON, asyncio -- is real CPU work, and a
+    # shared GitHub runner is not an M-series laptop. A baseline measured on a
+    # developer machine and enforced on a runner is a threshold on the
+    # difference between two computers.
+    #
+    # So this job runs the gate's exact sweep on a runner and uploads the
+    # resulting baseline as an artifact, to be downloaded and committed with a
+    # message saying which run produced it. On demand only: regenerating a
+    # baseline is a deliberate act, never a side effect of a push.
+    name: refresh the baseline
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv sync --all-groups --no-install-package llama-cpp-python
+
+      - name: Measure
+        run: |
+          uv run bench/run_sweep.py \
+            --config continuous+cache+admission \
+            --rates 4,8 --duration 45 --warmup 10 --cooldown 3 \
+            --slo 2.0 --seed 0 --workload ci --port 8000 \
+            --set CADENCE_BACKEND=mock \
+            --set CADENCE_ADMISSION_MODEL=models/admission-ci-mock.pkl \
+            --out baseline.parquet
+          uv run bench/check_regression.py baseline.parquet \
+            --baseline bench/baselines/ci_baseline.json --slo 2.0 \
+            --update-baseline \
+            --note "measured on ${{ runner.os }}/${{ runner.arch }} by run ${{ github.run_id }}"
+          cat bench/baselines/ci_baseline.json >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ci_baseline.json
+          path: bench/baselines/ci_baseline.json
+
+  prove-the-gate-can-fail:
+    # The gate is only worth having if it can go red, and a gate nobody has
+    # ever seen fail is a gate nobody knows is wired up. This job deliberately
+    # breaks the scheduler -- max_batch 1, which turns continuous batching
+    # into a queue -- and asserts that the check *fails*. It runs on demand
+    # and on main, never on a PR, because its purpose is to prove the
+    # instrument works rather than to test the change.
+    name: prove the gate can fail
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv sync --all-groups --no-install-package llama-cpp-python
+
+      - name: A deliberately regressed scheduler
+        run: |
+          uv run bench/run_sweep.py \
+            --config continuous+cache+admission \
+            --rates 4,8 --duration 45 --warmup 10 --cooldown 3 \
+            --slo 2.0 --seed 0 --workload ci --port 8000 \
+            --set CADENCE_BACKEND=mock \
+            --set CADENCE_ADMISSION_MODEL=models/admission-ci-mock.pkl \
+            --set CADENCE_MAX_BATCH=1 \
+            --out regressed.parquet
+
+      - name: The gate must reject it
+        run: |
+          set +e
+          uv run bench/check_regression.py regressed.parquet \
+            --baseline bench/baselines/ci_baseline.json \
+            --slo 2.0 --max-p99-regression 0.15 --min-goodput 0.90 \
+            --summary-out "$GITHUB_STEP_SUMMARY"
+          code=$?
+          set -e
+          if [ "$code" -ne 1 ]; then
+            echo "::error::the gate returned $code for a scheduler with max_batch=1;" \
+                 "it should have returned 1 (regression). A gate that cannot fail is not a gate."
+            exit 1
+          fi
+          echo "the gate correctly rejected a deliberately regressed scheduler"
