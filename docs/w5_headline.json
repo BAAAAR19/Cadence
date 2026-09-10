@@ -95,6 +95,26 @@
     ]
   },
   "n_tradeoffs": 62,
+  "online_coverage": {
+    "continuous+cache+admission-a05": {
+      "nominal": 0.95,
+      "empirical": 1.0,
+      "n": 2876,
+      "n_censored": 0,
+      "n_violations": 0,
+      "mean_bound_s": 2.598272332843647,
+      "mean_e2e_s": 0.7176291189749154
+    },
+    "continuous+cache+admission-a20": {
+      "nominal": 0.8,
+      "empirical": 0.921535076998289,
+      "n": 4091,
+      "n_censored": 0,
+      "n_violations": 321,
+      "mean_bound_s": 2.2239350228078836,
+      "mean_e2e_s": 1.1440456707942606
+    }
+  },
   "drain": {
     "streams": 8,
     "finished_cleanly": 8,

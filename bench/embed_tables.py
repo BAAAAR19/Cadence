@@ -36,6 +36,7 @@ TABLES = {
     "ANCHOR": "block_anchor.md",
     "SESSION": "session_check.md",
     "DRAIN": "drain.md",
+    "ONLINE": "online_coverage.md",
 }
 
 

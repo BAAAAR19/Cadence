@@ -15,8 +15,9 @@ LADDER="${LADDER:-results/w5_ladder}"
 R5="${R5:-results/w5_ladder_r5}"
 
 uv run bench/w5_report.py "$LADDER" --r5 "$R5" --slo "$SLO" --outdir docs \
-    --w2 results/w2_ladder --w4 results/w4_admission --fit results/w4_fit \
-    --traces "$LADDER/traces" --drain results/w5_drain.json
+    --w2 results/w2_ladder --fit results/w4_fit \
+    --traces "$LADDER/traces" --traces "$R5/traces" \
+    --drain results/w5_drain.json
 uv run bench/w5_charts.py "$LADDER" --r5 "$R5" --slo "$SLO" --outdir docs/figs/w5 \
     --fit results/w4_fit
 uv run bench/embed_tables.py

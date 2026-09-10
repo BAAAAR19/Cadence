@@ -543,6 +543,61 @@ def thermal_table(canary_paths: list[Path]) -> tuple[str, dict]:
     }
 
 
+ARM_ALPHA = {
+    "continuous+cache+admission": 0.01,
+    "continuous+cache+admission-a05": 0.05,
+    "continuous+cache+admission-a20": 0.20,
+}
+
+
+def online_coverage_table(trace_dirs: list[str]) -> tuple[str, dict]:
+    """What the bound achieved live, on the requests it chose to admit.
+
+    This is the number the theory does not cover, and it is the one worth
+    reporting. Split conformal guarantees coverage over data exchangeable
+    with the calibration set; the calibration set was collected with
+    admission *off*, and the controller changes which requests run. The
+    guarantee is therefore void the moment the controller is switched on --
+    not approximately, but as a matter of what the theorem says.
+
+    So it is measured instead, over three seeds and the whole offered-load
+    grid, from the traces the controller itself wrote while deciding.
+    """
+    from w4_report import online_coverage
+
+    rows, meta = [], {}
+    for arm, alpha in ARM_ALPHA.items():
+        got = online_coverage([str(d) for d in trace_dirs], alpha, config=arm)
+        if not got:
+            continue
+        rows.append(
+            f"| {LABELS.get(arm, arm)} | {1 - alpha:.0%} | "
+            f"**{got['empirical']:.1%}** | {got['n']} | {got['n_violations']} | "
+            f"{got['mean_bound_s']:.2f} | {got['mean_e2e_s']:.2f} |"
+        )
+        meta[arm] = got
+    if not rows:
+        return "", {}
+    header = [
+        "| Arm | Nominal | Empirical | admitted & completed | violations | "
+        "mean bound (s) | mean actual (s) |",
+        "|:--|--:|--:|--:|--:|--:|--:|",
+    ]
+    note = (
+        "\n\nCoverage over every request the controller admitted and saw "
+        "finish, across three seeds and six offered loads, from the traces it "
+        "wrote while it was deciding. This is deliberately *not* the held-out "
+        "coverage in the Week 4 fit: that one is a check on the method, and "
+        "this one is a check on the deployment. The finite-sample guarantee "
+        "does not apply here at all -- the calibration set was collected with "
+        "admission off, and the controller changes which requests run, so the "
+        "exchangeability the theorem needs is gone by construction. The gap "
+        "between the mean bound and the mean actual latency is the price of a "
+        "bound that is valid rather than sharp."
+    )
+    return "\n".join(header + rows) + note, meta
+
+
 def drain_table(path: Path) -> tuple[str, dict]:
     """What the drain actually did, from bench/demo_drain.py --json-out."""
     if not path.exists():
@@ -628,9 +683,10 @@ def main(argv=None) -> None:
     p.add_argument("--slo", type=float, default=4.0)
     p.add_argument("--outdir", default="docs")
     p.add_argument("--w2", default=None, help="Week 2's ladder, for the session check")
-    p.add_argument("--w4", default=None, help="Week 4's sweep (recorded in the headline)")
     p.add_argument("--fit", default=None, help="results/w4_fit, for the coverage line")
-    p.add_argument("--traces", default=None, help="admission traces from this sweep")
+    p.add_argument("--traces", action="append", default=None,
+                   help="admission traces from this sweep; repeatable. Used "
+                        "for the online coverage the bound actually achieved.")
     p.add_argument("--drain", default=None, help="bench/demo_drain.py --json-out")
     a = p.parse_args(argv)
 
@@ -692,6 +748,13 @@ def main(argv=None) -> None:
     head["thermal"] = thermal_meta
     head["block_anchor"] = anchor_meta
     head["n_tradeoffs"] = len(found)
+    if a.traces:
+        tdirs = [Path(d) for d in ([a.traces] if isinstance(a.traces, str) else a.traces)]
+        cov, cov_meta = online_coverage_table([d for d in tdirs if d.exists()])
+        if cov:
+            (outdir / "online_coverage.md").write_text(cov + "\n")
+            head["online_coverage"] = cov_meta
+
     if a.drain:
         drain, drain_meta = drain_table(Path(a.drain))
         if drain:
