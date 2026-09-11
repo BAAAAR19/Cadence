@@ -46,6 +46,11 @@ fly launch --no-deploy --copy-config --config deploy/fly.toml
 fly deploy --config deploy/fly.toml --ha=false
 ```
 
+The deployed instance is live at
+[cadence-gateway.fly.dev](https://cadence-gateway.fly.dev). It runs one
+always-on Machine with two shared vCPUs and 4 GB RAM; `/health`, `/ready`,
+`/v1/models`, and a chat completion have been verified over public HTTPS.
+
 `deploy/fly.toml` is commented line by line. The parts that are decisions
 rather than boilerplate:
 
@@ -71,7 +76,7 @@ rather than boilerplate:
 
 `models/admission.pkl` was fitted on llama.cpp with Metal on an M-series
 laptop. A split-conformal bound guarantees coverage on data *exchangeable with
-its calibration set* and says nothing at all otherwise. Move it to four shared
+its calibration set* and says nothing at all otherwise. Move it to two shared
 vCPUs, where the same request takes several times longer, and it is not a
 conservative bound — it is an arbitrary number. The observed behaviour is
 unambiguous once you know to look for it: the gateway refuses essentially

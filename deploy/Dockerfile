@@ -53,7 +53,10 @@ RUN uv sync --frozen --no-install-project --no-dev
 
 # Then the project itself, which is what builds the C++17 extension.
 COPY src ./src
-RUN uv sync --frozen --no-dev
+# Install the project into site-packages. An editable install records /app/src
+# in the virtualenv, but that build-only directory is intentionally absent
+# from the runtime stage.
+RUN uv sync --frozen --no-dev --no-editable
 
 # The extension must exist. Without this line the image would still start,
 # fall back to the Python reference, and quietly serve different code from

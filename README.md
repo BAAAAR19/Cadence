@@ -1928,6 +1928,10 @@ docker compose -f deploy/docker-compose.yml up --build   # gateway + Prometheus 
 fly deploy --config deploy/fly.toml --ha=false
 ```
 
+**Live instance:** [cadence-gateway.fly.dev](https://cadence-gateway.fly.dev)
+— verified end to end on two shared vCPUs with `/health`, `/ready`,
+`/v1/models`, and an OpenAI-compatible chat completion all returning 200.
+
 Full notes in [`deploy/README.md`](deploy/README.md). The parts that are
 decisions rather than boilerplate:
 
@@ -1971,7 +1975,7 @@ something upstream has already failed.
 
 **Admission control is off on the deployed instance, and that is the honest
 setting rather than a missing feature.** The committed predictor was
-calibrated on llama.cpp with Metal. On four shared vCPUs it is not a
+calibrated on llama.cpp with Metal. On two shared vCPUs it is not a
 conservative bound but an arbitrary one, and it would shed essentially
 everything while looking exactly like correct overload behaviour.
 `deploy/README.md` has the four-command procedure for calibrating it on the
@@ -2380,7 +2384,7 @@ is worth being explicit about which:
 | Three seeds per rung | Done. Every cell in the Week 5 tables is the mean of three arrival realisations with the range beside it, and the three seeds' realisations were recorded before the sweep rather than chosen after it. |
 | CI load-test regression gate | Done, demonstrated failing, and calibrated on `ubuntu-latest` (`Linux/X64`) by the linked refresh workflow run. |
 | An end-to-end win from the C++ core | There isn't one, and the arithmetic says there could not be at this model size. The claim the port supports is correctness and a written-down interface, not speed. |
-| Live deployment URL | The image, `fly.toml`, the readiness/drain/cap machinery and the deploy runbook are committed, and the drain is asserted by a test on every CI run. The container itself is still unverified end to end — there is no Docker on this machine — so the build is reviewed rather than run, and no number anywhere in this README comes from it. |
+| Live deployment URL | Done — [cadence-gateway.fly.dev](https://cadence-gateway.fly.dev) runs the checksummed image on two shared vCPUs with 4 GB RAM. Both health endpoints, model discovery, and a real chat completion have been verified over public HTTPS. The performance numbers in this README still come from the documented host runs, not this CPU deployment. |
 | Admission control on the deployed instance | Off, deliberately. The committed predictor was calibrated on Metal and is not a valid bound on a CPU container; the gateway now says so at start-up instead of silently shedding everything. The four-command recalibration procedure is in `deploy/README.md`. |
 | A predictor that survives a workload change | The model is fitted on *this* workload and this machine. Nothing here establishes that it transfers to another prompt mix, and the honest mitigation for that is the rolling recalibration in `conformal.py`, which is implemented and unit-tested but is not the mode the headline run used. |
 

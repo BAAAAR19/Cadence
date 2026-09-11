@@ -56,7 +56,7 @@ kill_timeout = "95s"
   # The committed artifact (models/admission.pkl) was calibrated on llama.cpp
   # with Metal on an M-series laptop. A split-conformal bound is a statement
   # about exchangeability with its calibration set and nothing else, so on
-  # four shared vCPUs -- where the same request takes several times longer --
+  # two shared vCPUs -- where the same request takes several times longer --
   # that artifact is not a conservative bound, it is an arbitrary one. Turned
   # on regardless, it sheds essentially everything at zero load, which looks
   # exactly like correct overload behaviour and is not.
@@ -119,5 +119,5 @@ kill_timeout = "95s"
 
 [[vm]]
   cpu_kind = "shared"
-  cpus = 4
+  cpus = 2
   memory = "4gb"
