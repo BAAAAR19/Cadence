@@ -1925,7 +1925,7 @@ environment.
 
 ```bash
 docker compose -f deploy/docker-compose.yml up --build   # gateway + Prometheus + Grafana
-fly deploy --config deploy/fly.toml --dockerfile deploy/Dockerfile
+fly deploy --config deploy/fly.toml --ha=false
 ```
 
 Full notes in [`deploy/README.md`](deploy/README.md). The parts that are

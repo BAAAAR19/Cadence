@@ -1,7 +1,7 @@
 # Cadence on Fly.io.
 #
 #   fly launch --no-deploy --copy-config --config deploy/fly.toml
-#   fly deploy --config deploy/fly.toml --dockerfile deploy/Dockerfile
+#   fly deploy --config deploy/fly.toml --ha=false
 #
 # One machine, CPU only, weights baked into the image. Everything below that
 # is not boilerplate is a consequence of something measured elsewhere in this
@@ -18,7 +18,8 @@ kill_signal = "SIGTERM"
 kill_timeout = "95s"
 
 [build]
-  dockerfile = "deploy/Dockerfile"
+  # Paths here are resolved relative to this config file.
+  dockerfile = "Dockerfile"
 
 [env]
   CADENCE_CONFIG_NAME = "fly"
@@ -117,6 +118,6 @@ kill_timeout = "95s"
     path = "/health"
 
 [[vm]]
-  cpu_kind = "performance"
+  cpu_kind = "shared"
   cpus = 4
   memory = "4gb"

@@ -43,7 +43,7 @@ so.
 
 ```bash
 fly launch --no-deploy --copy-config --config deploy/fly.toml
-fly deploy --config deploy/fly.toml --dockerfile deploy/Dockerfile
+fly deploy --config deploy/fly.toml --ha=false
 ```
 
 `deploy/fly.toml` is commented line by line. The parts that are decisions
